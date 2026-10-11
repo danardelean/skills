@@ -316,6 +316,15 @@ if [ ${#WORKLOADS[@]} -gt 0 ]; then
         "$INSTALL_DIR/dotnet" workload config --update-mode manifests
     fi
     "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
+    if [ "$QUALITY" = "daily" ]; then
+        # the install succeeds even when it fell back to bundled manifests of an older band: check the band
+        BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
+        LIST="$("$INSTALL_DIR/dotnet" workload list)"
+        for w in "${WORKLOADS[@]}"; do
+            printf '%s\n' "$LIST" | grep -Eq "^${w}[[:space:]].*/${BAND}([[:space:]]|$)" \
+                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: manifest band is not ${BAND}, the installer fell back to an older band; see references/daily-builds.md." >&2; exit 1; }
+        done
+    fi
 fi
 echo "Done. SDK: $SDK_VERSION"
 ```
@@ -389,6 +398,17 @@ if ($Workloads.Count -gt 0) {
         if ($LASTEXITCODE -ne 0) { throw "workload config --update-mode manifests failed with exit code $LASTEXITCODE" }
     }
     & "$installDir\dotnet.exe" workload install @Workloads
+    if ($LASTEXITCODE -ne 0) { throw "workload install failed with exit code $LASTEXITCODE" }
+    if ($quality -eq 'daily') {
+        # the install succeeds even when it fell back to bundled manifests of an older band: check the band
+        $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
+        $list = & "$installDir\dotnet.exe" workload list
+        foreach ($w in $Workloads) {
+            if (-not ($list | Select-String -Pattern "^$w\s.*/$([regex]::Escape($band))(\s|`$)" -Quiet)) {
+                $list | Write-Host; throw "workload ${w}: manifest band is not $band, the installer fell back to an older band; see references/daily-builds.md."
+            }
+        }
+    }
 }
 Write-Host "Done. SDK: $sdkVersion"
 ```

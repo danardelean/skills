@@ -180,7 +180,7 @@ stimuli:
           pattern: '(--quality\s+daily|-Quality\s+daily|quality.{0,20}daily)'
       - type: output-matches
         config:
-          pattern: '(aka\.ms/dotnet|dotnet-install[^\n]{0,160}(--dry-run|-DryRun))'
+          pattern: '(aka\.ms/dotnet|dotnet-install[\s\S]{0,160}(--dry-run|-DryRun))'
       - type: output-matches
         config:
           pattern: '(--dry-run|-DryRun|dry run|HEAD|redirect|url_effective|Location header)'
@@ -265,6 +265,18 @@ stimuli:
       capability: daily-team-install-scripts
       risk: stale-manifests-on-teammates
       journey: team-setup
+    golden_patch:
+      path: ./references/daily-team-scripts.patch
+    golden_trajectory:
+      inline:
+        schema_version: "ATIF-v1.6"
+        session_id: "setup-local-sdk-daily-team-scripts"
+        agent: { name: reference, version: "1.0.0", model_name: curated }
+        steps:
+          - step_id: 1
+            source: agent
+            message: |-
+              Two scripts for teammates, install-dotnet.sh and install-dotnet.ps1, both pinned to the 11.0.1xx-rc2 channel with the daily quality, installing into ./.dotnet and defaulting the workload list to maui (pass other ids as arguments). A daily band has no manifests on nuget.org and no workload set, so a plain workload install would keep the SDK's months-old bundled manifests: the scripts switch the installer to manifests update mode, refuse to install workloads unless NuGet.config lists the dotnet11 feed, and after the install read workload list and fail unless maui carries the SDK's own band (11.0.100-rc.2) rather than a bundled older one. The repo also needs a NuGet.config with the dotnet11 feed on pkgs.dev.azure.com/dnceng/public and the darc-pub-dotnet-android-* and darc-pub-dotnet-macios-* feeds that dotnet/maui's NuGet.config lists on its release/11.0.1xx-rc2 branch; add them to the existing NuGet.config if the repo has one, keeping its other sources and mappings. Nothing was downloaded now: the scripts only fetch the SDK when a teammate runs them.
     graders:
       - type: file-exists
         config:
@@ -275,11 +287,43 @@ stimuli:
       - type: file-contains
         config:
           path: install*.sh
+          value: 11.0.1xx-rc2
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: 11.0.1xx-rc2
+      - type: file-contains
+        config:
+          path: install*.sh
           value: daily
       - type: file-contains
         config:
           path: install*.ps1
           value: daily
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: .dotnet
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: .dotnet
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: maui
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: maui
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: _packaging/dotnet
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: _packaging/dotnet
       - type: file-contains
         config:
           path: install*.sh

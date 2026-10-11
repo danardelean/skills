@@ -1,0 +1,180 @@
+diff --git a/install-dotnet.ps1 b/install-dotnet.ps1
+new file mode 100644
+index 0000000..557e631
+--- /dev/null
++++ b/install-dotnet.ps1
+@@ -0,0 +1,75 @@
++param([string[]]$Workloads = @('maui'))
++$ErrorActionPreference = 'Stop'
++$installDir = '.dotnet'; $channel = '11.0.1xx-rc2'; $quality = 'daily'
++$version = ''; $rollForward = 'latestFeature'; $allowPrerelease = $true
++$errorMessage = 'Required .NET SDK not found. Run ./install-dotnet.sh (or .ps1) to install it locally.'
++$installScript = Join-Path $env:TEMP "dotnet-install-$([guid]::NewGuid()).ps1"
++try {
++    Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript
++    $installArgs = @('-InstallDir', $installDir)
++    if ($version) {
++        $installArgs += @('-Version', $version)
++        $rollForward = 'disable'
++    } else {
++        $installArgs += @('-Channel', $channel, '-Quality', $quality)
++    }
++    & $installScript @installArgs
++}
++finally {
++    if (Test-Path -LiteralPath $installScript) {
++        Remove-Item -LiteralPath $installScript -Force
++    }
++}
++$sdkVersion = & "$installDir\dotnet.exe" --version
++$globalJson = if (Test-Path 'global.json') {
++    Copy-Item 'global.json' 'global.json.bak'
++    Get-Content -Path 'global.json' -Raw | ConvertFrom-Json
++} else {
++    [pscustomobject]@{}
++}
++if (-not $globalJson.PSObject.Properties['sdk']) {
++    $globalJson | Add-Member -MemberType NoteProperty -Name 'sdk' -Value ([pscustomobject]@{})
++}
++$updates = [ordered]@{
++    version = $sdkVersion
++    allowPrerelease = $allowPrerelease
++    rollForward = $rollForward
++    paths = @('.dotnet', '$host$')
++    errorMessage = $errorMessage
++}
++foreach ($entry in $updates.GetEnumerator()) {
++    $property = $globalJson.sdk.PSObject.Properties[$entry.Key]
++    if ($property) {
++        $property.Value = $entry.Value
++    } else {
++        $globalJson.sdk | Add-Member -MemberType NoteProperty -Name $entry.Key -Value $entry.Value
++    }
++}
++$globalJson | ConvertTo-Json -Depth 10 | Set-Content -Path 'global.json' -Encoding UTF8
++if (-not (Test-Path .gitignore) -or -not (Select-String -Path .gitignore -Pattern '^\.dotnet/$' -Quiet)) {
++    Add-Content -Path .gitignore -Value '.dotnet/'
++}
++if ($Workloads.Count -gt 0) {
++    if ($quality -eq 'daily') {
++        # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
++        $major = "$sdkVersion".Split('.')[0]
++        if (-not (Test-Path 'NuGet.config') -or -not (Select-String -Path 'NuGet.config' -Pattern "_packaging/dotnet$major/" -SimpleMatch -Quiet)) {
++            throw "Daily SDK: NuGet.config must list the dotnet$major feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md."
++        }
++        & "$installDir\dotnet.exe" workload config --update-mode manifests
++        if ($LASTEXITCODE -ne 0) { throw "workload config --update-mode manifests failed with exit code $LASTEXITCODE" }
++    }
++    & "$installDir\dotnet.exe" workload install @Workloads
++    if ($LASTEXITCODE -ne 0) { throw "workload install failed with exit code $LASTEXITCODE" }
++    if ($quality -eq 'daily') {
++        # the install succeeds even when it fell back to bundled manifests of an older band: check the band
++        $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
++        $list = & "$installDir\dotnet.exe" workload list
++        foreach ($w in $Workloads) {
++            if (-not ($list | Select-String -Pattern "^$w\s.*/$([regex]::Escape($band))(\s|`$)" -Quiet)) {
++                $list | Write-Host; throw "workload ${w}: manifest band is not $band, the installer fell back to an older band; see references/daily-builds.md."
++            }
++        }
++    }
++}
++Write-Host "Done. SDK: $sdkVersion"
+diff --git a/install-dotnet.sh b/install-dotnet.sh
+new file mode 100755
+index 0000000..6dc63d2
+--- /dev/null
++++ b/install-dotnet.sh
+@@ -0,0 +1,93 @@
++#!/usr/bin/env bash
++set -euo pipefail
++INSTALL_DIR=".dotnet"
++CHANNEL="11.0.1xx-rc2"
++QUALITY="daily"
++VERSION=""
++ROLL_FORWARD="latestFeature"
++ALLOW_PRERELEASE="true"
++WORKLOADS=("${@:-maui}")
++ERROR_MESSAGE="Required .NET SDK not found. Run ./install-dotnet.sh (or .ps1) to install it locally."
++INSTALL_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/dotnet-install.XXXXXX")"
++GLOBAL_JSON_TMP=""
++cleanup() {
++    rm -f "$INSTALL_SCRIPT"
++    [ -n "$GLOBAL_JSON_TMP" ] && rm -f "$GLOBAL_JSON_TMP"
++}
++trap cleanup EXIT
++curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$INSTALL_SCRIPT"
++INSTALL_ARGS=(--install-dir "$INSTALL_DIR")
++if [ -n "$VERSION" ]; then
++    INSTALL_ARGS+=(--version "$VERSION")
++    ROLL_FORWARD="disable"
++else
++    INSTALL_ARGS+=(--channel "$CHANNEL" --quality "$QUALITY")
++fi
++bash "$INSTALL_SCRIPT" "${INSTALL_ARGS[@]}"
++SDK_VERSION=$("$INSTALL_DIR/dotnet" --version)
++write_global_json() {
++    if [ -f global.json ]; then
++        cp global.json global.json.bak
++        if ! command -v jq >/dev/null 2>&1; then
++            echo "global.json exists; install succeeded, but this script will not overwrite it without jq." >&2
++            echo "Merge these sdk settings manually so existing global.json properties are preserved:" >&2
++            cat >&2 <<EOF
++{
++  "sdk": {
++    "version": "$SDK_VERSION",
++    "allowPrerelease": $ALLOW_PRERELEASE,
++    "rollForward": "$ROLL_FORWARD",
++    "paths": [".dotnet", "\$host\$"],
++    "errorMessage": "$ERROR_MESSAGE"
++  }
++}
++EOF
++            exit 1
++        fi
++        GLOBAL_JSON_TMP="$(mktemp "${TMPDIR:-/tmp}/global-json.XXXXXX")"
++        jq --arg version "$SDK_VERSION" --arg rollForward "$ROLL_FORWARD" --argjson allowPrerelease "$ALLOW_PRERELEASE" --arg errorMessage "$ERROR_MESSAGE" '
++          .sdk = ((.sdk // {}) + {
++            version: $version,
++            allowPrerelease: $allowPrerelease,
++            rollForward: $rollForward,
++            paths: [".dotnet", "$host$"],
++            errorMessage: $errorMessage
++          })
++        ' global.json > "$GLOBAL_JSON_TMP"
++        mv "$GLOBAL_JSON_TMP" global.json
++        GLOBAL_JSON_TMP=""
++    else
++        cat > global.json <<EOF
++{
++  "sdk": {
++    "version": "$SDK_VERSION",
++    "allowPrerelease": $ALLOW_PRERELEASE,
++    "rollForward": "$ROLL_FORWARD",
++    "paths": [".dotnet", "\$host\$"],
++    "errorMessage": "$ERROR_MESSAGE"
++  }
++}
++EOF
++    fi
++}
++write_global_json
++grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitignore
++if [ ${#WORKLOADS[@]} -gt 0 ]; then
++    if [ "$QUALITY" = "daily" ]; then
++        # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
++        grep -q "_packaging/dotnet${SDK_VERSION%%.*}/" NuGet.config 2>/dev/null \
++            || { echo "Daily SDK: NuGet.config must list the dotnet${SDK_VERSION%%.*} feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md." >&2; exit 1; }
++        "$INSTALL_DIR/dotnet" workload config --update-mode manifests
++    fi
++    "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
++    if [ "$QUALITY" = "daily" ]; then
++        # the install succeeds even when it fell back to bundled manifests of an older band: check the band
++        BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
++        LIST="$("$INSTALL_DIR/dotnet" workload list)"
++        for w in "${WORKLOADS[@]}"; do
++            printf '%s\n' "$LIST" | grep -Eq "^${w}[[:space:]].*/${BAND}([[:space:]]|$)" \
++                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: manifest band is not ${BAND}, the installer fell back to an older band; see references/daily-builds.md." >&2; exit 1; }
++        done
++    fi
++fi
++echo "Done. SDK: $SDK_VERSION"
