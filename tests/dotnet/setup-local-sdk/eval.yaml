@@ -180,7 +180,7 @@ stimuli:
           pattern: '(--quality\s+daily|-Quality\s+daily|quality.{0,20}daily)'
       - type: output-matches
         config:
-          pattern: 'aka\.ms/dotnet'
+          pattern: '(aka\.ms/dotnet|dotnet-install[^\n]{0,160}(--dry-run|-DryRun))'
       - type: output-matches
         config:
           pattern: '(--dry-run|-DryRun|dry run|HEAD|redirect|url_effective|Location header)'
