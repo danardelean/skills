@@ -364,6 +364,22 @@ stimuli:
         config:
           path: install*.ps1
           value: workload list
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: 'for w in "${WORKLOADS[@]}"'
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: 'foreach ($w in $Workloads)'
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: 'build of the SDK''s lane'
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: 'build of the SDK''s lane'
       - type: file-exists
         config:
           path: NuGet.config
