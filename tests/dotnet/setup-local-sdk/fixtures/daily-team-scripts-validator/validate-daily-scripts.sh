@@ -6,6 +6,7 @@
 #   3. a workload from another lane of the same rc band fails the script
 #   4. without a NuGet config the script stops before workload install
 #   5. when workload install fails, build servers are still shut down and the failure is propagated
+#   6. workload install receives the requested ids (the fake dotnet rejects a call without ios and android)
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 candidate="$(ls install*.sh 2>/dev/null | head -1)"
@@ -18,7 +19,12 @@ cat > "$stubs/fake-dotnet" <<'STUB'
 echo "$*" >> "$FAKE_LOG"
 case "${1:-}" in
   --version) echo "$FAKE_SDK_VERSION" ;;
-  workload) case "${2:-}" in list) cat "$FAKE_LIST" ;; install) exit "${FAKE_INSTALL_EXIT:-0}" ;; esac ;;
+  workload) case "${2:-}" in
+    list) cat "$FAKE_LIST" ;;
+    install) shift 2; case " $* " in *" ios "*) ;; *) echo "fake dotnet: workload install without ios: $*" >&2; exit 2 ;; esac
+             case " $* " in *" android "*) ;; *) echo "fake dotnet: workload install without android: $*" >&2; exit 2 ;; esac
+             exit "${FAKE_INSTALL_EXIT:-0}" ;;
+  esac ;;
 esac
 exit 0
 STUB

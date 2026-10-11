@@ -216,7 +216,7 @@ stimuli:
           pattern: '(update-mode|workload set|manifests)'
       - type: output-matches
         config:
-          pattern: '(wait|Patch Tuesday|until .{0,60}(published|public|released)|10\.0\.12|WorkloadManifest\.json|sdk-manifests|--skip-manifest-update|(edit|patch|change|point)[^\n]{0,80}(compat|mono\.toolchain|emscripten|manifest))'
+          pattern: '(wait|Patch Tuesday|until [^\n]{0,60}(published|public|released)|(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests)[\s\S]{0,400}--skip-manifest-update|--skip-manifest-update[\s\S]{0,400}(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests))'
       - type: output-not-matches
         config:
           pattern: '(install(ed|ation) (succeeded|successful|completed)|is now installed)'
@@ -390,7 +390,7 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "a91c421f314aef3786f4196064adc7cce5ff6870aa79b3be84b45de7e0dd5926  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "37e583b0adebaf73a3c0a73c79c817b1c0f685da86eeaa55277d1eb603b401d0  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: file-contains
