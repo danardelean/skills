@@ -1,11 +1,15 @@
 name: setup-local-sdk
 description: Evaluates the dotnet/setup-local-sdk skill
 type: capability
-config:
+defaults:
   timeout: 10m
 stimuli:
   - name: Detect incompatible .NET host version
     prompt: I already ran dotnet --version and it printed 9.0.306. I want to set up a local .NET 11 preview SDK for my project using the global.json SDK paths feature. Is that possible?
+    tags:
+      capability: host-version-gate
+      risk: wasted-download
+      journey: try-prerelease
     constraints:
       reject_tools:
         - bash
@@ -36,6 +40,10 @@ stimuli:
 
   - name: Create team install scripts
     prompt: This repo already has a global.json for a .NET 11 preview. Create install scripts and repo configuration, including a clear missing-SDK message, so teammates can reproduce the project-local SDK setup on any OS after cloning. Preserve the existing global.json sections. Don't download the SDK now.
+    tags:
+      capability: team-install-scripts
+      risk: lost-global-json-settings
+      journey: team-setup
     environment:
       files:
         - src: ./fixtures/create-team-install-scripts/global.json
@@ -116,6 +124,10 @@ stimuli:
 
   - name: Plan a project-local .NET 11 preview setup without downloading
     prompt: I want to try the latest .NET 11 preview in my project without affecting my global install. Show me the exact commands and configuration you would use to set it up locally, but do not download or install anything now.
+    tags:
+      capability: plan-local-sdk-setup
+      risk: system-install-change
+      journey: try-prerelease
     constraints:
       reject_tools:
         - bash
@@ -147,3 +159,98 @@ stimuli:
       - The agent excluded the local SDK directory from source control
       - The agent explained how to clean up
       - The agent presented the plan/commands without actually downloading or installing the SDK
+
+  - name: Choose the channel for a release candidate daily build
+    prompt: I need the .NET 11 RC 2 bits before RC 2 ships, as a project-local SDK in my repo. Which channel and quality do I give dotnet-install, and how can I check which build that channel currently has without downloading it?
+    tags:
+      capability: choose-daily-channel
+      risk: wrong-lane-installed
+      journey: try-prerelease
+    constraints:
+      reject_tools:
+        - bash
+        - powershell
+        - web_fetch
+    graders:
+      - type: output-matches
+        config:
+          pattern: '11\.0\.1xx-rc2'
+      - type: output-matches
+        config:
+          pattern: '(--quality\s+daily|-Quality\s+daily|quality.{0,20}daily)'
+      - type: output-matches
+        config:
+          pattern: 'aka\.ms/dotnet'
+      - type: output-matches
+        config:
+          pattern: '(HEAD|redirect|url_effective|Location header|-I\b)'
+      - type: output-not-matches
+        config:
+          pattern: '(Downloading|Let me download|Installation finished successfully)'
+      - type: prompt
+    rubric:
+      - The agent named a channel that identifies the RC 2 lane rather than the generic 11.0 channel, which resolves to the newest released preview
+      - The agent explained how to learn the build a daily channel currently serves without downloading it
+      - The agent did not download or install anything
+
+  - name: Diagnose a workload install failure on a daily SDK
+    prompt: 'I installed a daily .NET 11 SDK into ./.dotnet in my repo and ran ./.dotnet/dotnet workload install maui. It printed "No workload update found" and then failed with: Version 10.0.13 of package microsoft.netcore.app.runtime.aot.osx-arm64.cross.iossimulator-x64 is not found in NuGet feeds https://api.nuget.org/v3/index.json. What is wrong and what do I do?'
+    tags:
+      capability: diagnose-daily-workload-failure
+      risk: stuck-or-wrong-bits
+      journey: try-prerelease
+    constraints:
+      reject_tools:
+        - bash
+        - powershell
+        - web_fetch
+    graders:
+      - type: output-matches
+        config:
+          pattern: '(servicing|Patch Tuesday|not (yet )?(public|published|released|on nuget))'
+      - type: output-matches
+        config:
+          pattern: '(NuGet\.config|dotnet11|pkgs\.dev\.azure\.com|package source|feed)'
+      - type: output-matches
+        config:
+          pattern: '(update-mode|workload set|manifests)'
+      - type: output-not-matches
+        config:
+          pattern: '(install(ed|ation) (succeeded|successful|completed)|is now installed)'
+      - type: prompt
+    rubric:
+      - The agent explained that the missing 10.0.13 package is the previous major's servicing runtime that is not yet publicly available
+      - The agent explained that nuget.org has no manifests for a daily band and that the installer fell back to the manifests bundled with the SDK
+      - The agent gave a concrete way forward, such as configuring the daily feeds and the manifests update mode, waiting for the runtime to be published, or pointing the compat manifests at a public version
+      - The agent did not claim the workload was installed
+
+  - name: Detect workloads installed from an older band
+    prompt: 'On a 12.0.1xx daily SDK installed in ./.dotnet, ./.dotnet/dotnet workload install ios android said "Successfully installed workload(s) ios android", but workload list shows ios 26.5.12193-net11-rc.1/11.0.100-rc.1 and android 37.0.0-rc.1.2257/11.0.100-rc.1. I expected the .NET 12 builds with Xcode 27 support. Is this right?'
+    tags:
+      capability: verify-workload-band
+      risk: silent-wrong-bits
+      journey: try-prerelease
+    constraints:
+      reject_tools:
+        - bash
+        - powershell
+        - web_fetch
+    graders:
+      - type: output-matches
+        config:
+          pattern: '(not right|not correct|is wrong|older band|fell back|fallback|bundled)'
+      - type: output-matches
+        config:
+          pattern: 'dotnet12'
+      - type: output-matches
+        config:
+          pattern: '(update-mode|workload set|manifests)'
+      - type: output-matches
+        config:
+          pattern: '12\.0\.100-alpha'
+      - type: prompt
+    rubric:
+      - The agent recognized that the installed manifests belong to an older band than the SDK and that the result is not what the user wanted
+      - The agent explained that the installer fell back to the manifests bundled with the SDK because the daily band's manifests were not reachable
+      - The agent gave the feed and installer configuration needed to get the .NET 12 band
+      - The agent told the user to verify the band in workload list after reinstalling

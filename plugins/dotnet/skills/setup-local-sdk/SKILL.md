@@ -5,8 +5,12 @@ description: >
   Install a .NET SDK locally for safe preview testing, specific-version pinning, or
   reproducible team setups — without modifying the system-wide installation.
   USE FOR: trying .NET previews safely, testing specific SDK versions, installing MAUI
-  or other workloads on a preview, updating or replacing an existing local SDK,
-  creating reproducible team/CI install scripts, configuring global.json paths.
+  or other workloads on a preview, trying a daily build (nightly) of an unreleased
+  SDK such as the next release candidate or the next major and its workloads,
+  choosing the daily channel for a lane, fixing "No workload update found" or
+  "package not found in NuGet feeds" on a daily SDK, updating or replacing an
+  existing local SDK, creating reproducible team/CI install scripts, configuring
+  global.json paths.
   DO NOT USE FOR: system-wide SDK installs, .NET hosts older than 10, runtime-only
   installs, or projects not using SDK-style commands.
 ---
@@ -34,7 +38,7 @@ The result is a fully isolated SDK that:
 
 | Input | Required | Default | Notes |
 |---|---|---|---|
-| Channel or version | No | `11.0` | e.g. `11.0`, `STS`, `LTS`, or an exact version like `11.0.100-preview.2.26159.112` |
+| Channel or version | No | `11.0` | e.g. `11.0`, `STS`, `LTS`, or an exact version like `11.0.100-preview.2.26159.112`; a daily build is named by its lane, e.g. `11.0.1xx-rc2`, `12.0.1xx` (see [Daily builds](#daily-builds-nightlies)) |
 | Quality | No | `preview` | One of: `daily`, `preview`, `ga` |
 | jq | No | — | Optional for bash team scripts when patching an existing `global.json`; without it, do not overwrite the file |
 
@@ -49,7 +53,11 @@ The result is a fully isolated SDK that:
 
 If the user didn't specify, ask what .NET SDK version they want (e.g., "latest
 .NET 11 preview" or an exact version like `11.0.100-preview.2.26159.112`).
-Map the answer to `--channel`/`--quality` or `--version` flags.
+Map the answer to `--channel`/`--quality` or `--version` flags. "The RC 2 bits
+before RC 2 ships" or "the next major" means a daily build of a lane, not
+`--channel 11.0 --quality preview` (that is the newest *released* preview):
+see [Daily builds](#daily-builds-nightlies) for the channel name and what
+changes afterwards.
 
 ### Step 2 — Verify .NET 10+ host
 
@@ -195,6 +203,13 @@ limitation and ask which target to configure.
 > **Always use the local dotnet binary for workload commands.** Workload metadata
 > is stored relative to the host process's dotnet root. The system `dotnet` puts
 > metadata in the wrong location. (See [dotnet/sdk#49825](https://github.com/dotnet/sdk/issues/49825).)
+
+On an SDK installed with `--quality daily`, this plain command keeps the SDK's
+months-old bundled manifests or fails on a package nuget.org does not have. Read
+[references/daily-builds.md](references/daily-builds.md) and follow its procedure
+(feeds in `NuGet.config`, manifests update mode, band check) before installing
+workloads on a daily, and verify the band in `workload list`, not just the
+"Successfully installed" line.
 
 ### Step 10 — Create team install scripts
 
@@ -375,11 +390,42 @@ global.json, optionally delete install scripts. Include the final `global.json`
 `dotnet workload install ...` command used and the workload verification result
 or the exact blocker if the workload could not be installed.
 
+## Daily builds (nightlies)
+
+`--quality daily` installs the newest build of a *channel*, which is the name of a
+build lane of [dotnet/dotnet](https://github.com/dotnet/dotnet): `11.0.1xx-rc2`
+is the RC 2 release branch, `11.0.1xx` the RTM release branch, `12.0.1xx` is
+`main`, already branded for the next major. The
+[builds table](https://github.com/dotnet/dotnet/blob/main/docs/builds-table.md)
+lists them but lags behind branding changes, so resolve a channel by the version
+it currently serves, without downloading. The archive link redirects to a URL
+that carries the version; an unknown channel does not 404, it lands on a search
+page, so check the pattern:
+
+```bash
+curl -sIL -o /dev/null -w '%{url_effective}\n' "https://aka.ms/dotnet/11.0.1xx-rc2/daily/dotnet-sdk-linux-x64.tar.gz"
+# .../Sdk/11.0.100-rc.2.26509.113/dotnet-sdk-11.0.100-rc.2.26509.113-linux-x64.tar.gz
+```
+
+Tell the user what the version means before installing: `rc.2` is the release
+candidate lane, `rtm` the release branch, `alpha.1` the next major. Steps 5 to 8
+are unchanged for a daily. Workloads are not: a daily band has no manifests on
+nuget.org and no workload set at all, and its compat packs can reference a
+previous-major servicing runtime that is not public yet, so Step 9 needs the
+procedure in [references/daily-builds.md](references/daily-builds.md). A
+workload that no manifest of the band defines (no `maui` on a `12.0.1xx` alpha
+while dotnet/maui still targets the previous major) cannot be installed from
+that lane: say so, install the rest, and note that the SDK is usable without it.
+
 ## Common pitfalls
 
 | Pitfall | Cause | Fix |
 |---|---|---|
 | `paths` ignored | Host `dotnet` < v10 | Install .NET 10+ system-wide |
+| Daily SDK: `No workload update found`, packs of an older preview installed | nuget.org has no manifests for a daily band; .NET 10+ looks for workload sets, which dailies do not publish, and falls back to the SDK's bundled manifests | Feeds in `NuGet.config` and `workload config --update-mode manifests`, see [references/daily-builds.md](references/daily-builds.md) |
+| Daily SDK: `Version <previous>.0.x of package … is not found in NuGet feeds` | Compat manifests reference the previous major's servicing runtime before Patch Tuesday | Wait, or point the two `.net<previous>` manifests at the newest public version and install with `--skip-manifest-update` |
+| `workload list` shows a band older than the SDK (`…/11.0.100-rc.1` on a `12.0.100-alpha.1` SDK) | The install "succeeded" with the bundled manifests | Not done: fix the feeds and update mode, reinstall, check the band again |
+| Build after a manifest refresh imports a `WorkloadManifest.targets` that no longer exists | MSBuild nodes and the compiler server keep the manifests they loaded | `./.dotnet/dotnet build-server shutdown` |
 | Wrong SDK resolves | `global.json` in parent directory | Check for global.json up the tree |
 | Teammates get "SDK not found" | `.dotnet/` gitignored, no install script run | Use `errorMessage` in global.json |
 | Workloads missing | Used system `dotnet` instead of local | Use `./.dotnet/dotnet workload install` |
