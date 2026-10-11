@@ -221,8 +221,8 @@ Adapt script variables to the install choice from Step 1: exact versions should
 use `--version` / `-Version` and `rollForward: "disable"`; channel installs should
 use channel/quality and only set `allowPrerelease: true` for prerelease SDKs.
 For a daily build set the quality to `daily`: the templates then switch the
-installer to manifests update mode and refuse to install workloads unless a
-`NuGet.config` with the daily feeds is present (see
+installer to manifests update mode and refuse to install workloads unless
+`NuGet.config` lists the `dotnet<major>` daily feed (see
 [references/daily-builds.md](references/daily-builds.md)), instead of running
 the plain install that fails on a daily.
 If `global.json` already pins `sdk.version` and the user mainly needs team
@@ -311,7 +311,8 @@ grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitigno
 if [ ${#WORKLOADS[@]} -gt 0 ]; then
     if [ "$QUALITY" = "daily" ]; then
         # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
-        [ -f NuGet.config ] || { echo "Daily SDK: list the daily feeds in NuGet.config before installing workloads (setup-local-sdk, references/daily-builds.md)." >&2; exit 1; }
+        grep -q "_packaging/dotnet${CHANNEL%%.*}/" NuGet.config 2>/dev/null \
+            || { echo "Daily SDK: NuGet.config must list the dotnet${CHANNEL%%.*} feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md." >&2; exit 1; }
         "$INSTALL_DIR/dotnet" workload config --update-mode manifests
     fi
     "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
@@ -380,7 +381,10 @@ if (-not (Test-Path .gitignore) -or -not (Select-String -Path .gitignore -Patter
 if ($Workloads.Count -gt 0) {
     if ($quality -eq 'daily') {
         # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
-        if (-not (Test-Path 'NuGet.config')) { throw 'Daily SDK: list the daily feeds in NuGet.config before installing workloads (setup-local-sdk, references/daily-builds.md).' }
+        $major = $channel.Split('.')[0]
+        if (-not (Test-Path 'NuGet.config') -or -not (Select-String -Path 'NuGet.config' -Pattern "_packaging/dotnet$major/" -SimpleMatch -Quiet)) {
+            throw "Daily SDK: NuGet.config must list the dotnet$major feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md."
+        }
         & "$installDir\dotnet.exe" workload config --update-mode manifests
     }
     & "$installDir\dotnet.exe" workload install @Workloads

@@ -40,10 +40,15 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
 
 ## 3. Procedure
 
-1. **Feeds.** Write a `NuGet.config` next to the project. Projects built with the daily need it too:
-   their restore pulls `Microsoft.NETCore.App.Ref` and the runtime packs of the daily version, which
-   are not on nuget.org (NU1102 otherwise). Sources: the `dotnet<major>` feed, plus the `darc-pub-*`
-   feeds listed in dotnet/maui's `NuGet.config` on the branch of the band:
+1. **Feeds.** The daily sources must be in the `NuGet.config` that applies to the project. Projects
+   built with the daily need them too: their restore pulls `Microsoft.NETCore.App.Ref` and the
+   runtime packs of the daily version, which are not on nuget.org (NU1102 otherwise). If the
+   repository already has a `NuGet.config`, add the sources to it and keep everything else: existing
+   sources, credentials, and `packageSourceMapping` (give each new source a mapping, or restores
+   that use mappings never look at it). `./.dotnet/dotnet nuget add source <url> --name <name>
+   --configfile NuGet.config` does that without touching other settings. Only create the standalone
+   file below, with its `<clear />`, when the repository has none. Sources: the `dotnet<major>`
+   feed, plus the `darc-pub-*` feeds listed in dotnet/maui's `NuGet.config` on the branch of the band:
    `release/<major>.0.1xx-<label without the dot>` for a preview or rc band (`release/11.0.1xx-rc2`),
    `net<major>.0` for a release band, `main` for an alpha. For an alpha, read the previous major's
    newest release branch as well: `main` may not have moved to the new major yet, while the alpha's

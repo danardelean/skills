@@ -247,7 +247,7 @@ stimuli:
           pattern: '(update-mode|workload set|manifests)'
       - type: output-matches
         config:
-          pattern: '12\.0\.100-alpha'
+          pattern: '(12\.0\.100|net12|same[^\n]{0,20}band|(band|manifest)s?[^\n]{0,60}(match|equal|align)[^\n]{0,40}SDK)'
       - type: prompt
     rubric:
       - The agent recognized that the installed manifests belong to an older band than the SDK and that the result is not what the user wanted
