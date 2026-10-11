@@ -255,12 +255,12 @@ stimuli:
       - The agent gave the feed and installer configuration needed to get the .NET 12 band
       - The agent told the user to verify the band in workload list after reinstalling
 
-  - name: Create team install scripts for a daily SDK with a workload
+  - name: Create team install scripts for a daily SDK with workloads
     prompt: >-
-      Teammates cloning this repo should get the 11.0.1xx-rc2 daily .NET SDK into ./.dotnet
-      together with the maui workload by running one script, on macOS/Linux and on Windows.
-      Write the scripts and whatever else the repo needs for that. Do not download or install
-      anything now.
+      Teammates cloning this repo should get the 12.0.1xx daily .NET SDK (the .NET 12 alpha) into
+      ./.dotnet together with the ios and android workloads by running one script, on macOS/Linux
+      and on Windows. Write the scripts and whatever else the repo needs for that. Do not download or
+      install anything now.
     tags:
       capability: daily-team-install-scripts
       risk: stale-manifests-on-teammates
@@ -276,7 +276,7 @@ stimuli:
           - step_id: 1
             source: agent
             message: |-
-              Two scripts for teammates, install-dotnet.sh and install-dotnet.ps1, both pinned to the 11.0.1xx-rc2 channel with the daily quality, installing into ./.dotnet and defaulting the workload list to maui (pass other ids as arguments). A daily band has no manifests on nuget.org and no workload set, so a plain workload install would keep the SDK's months-old bundled manifests: the scripts switch the installer to manifests update mode, refuse to install workloads unless NuGet.config lists the dotnet11 feed, and after the install read workload list and fail unless maui carries the SDK's own band (11.0.100-rc.2) and lane (an rc.2 build, not a main build published into the band) rather than a bundled older one. NuGet.config, next to the scripts, lists nuget.org, the dotnet11 feed on pkgs.dev.azure.com/dnceng/public and the darc-pub-dotnet-android-* and darc-pub-dotnet-macios-* feeds read from dotnet/maui's NuGet.config on its release/11.0.1xx-rc2 branch; a repo that already has a NuGet.config should get these sources added to it instead, keeping its other sources and mappings. Nothing was downloaded now: the scripts only fetch the SDK when a teammate runs them.
+              Two scripts for teammates, install-dotnet.sh and install-dotnet.ps1, both pinned to the 12.0.1xx channel with the daily quality, installing into ./.dotnet and defaulting the workload list to ios and android (pass other ids as arguments). A daily band has no manifests on nuget.org and no workload set, so a plain workload install would keep the SDK's months-old bundled manifests: the scripts switch the installer to manifests update mode, refuse to install workloads unless NuGet.config lists the dotnet12 feed, and after the install read workload list and fail unless ios and android carry the SDK's own band (12.0.100-alpha.1) rather than a bundled older one such as 11.0.100-rc.1. NuGet.config, next to the scripts, lists nuget.org, the dotnet12 feed on pkgs.dev.azure.com/dnceng/public and the darc-pub-dotnet-android-* and darc-pub-dotnet-macios-* feeds read from dotnet/maui's NuGet.config on its net11.0 and release/11.0.1xx-rc2 branches, because the alpha's iOS and Android workloads still carry packs of the previous major; a repo that already has a NuGet.config should get these sources added to it instead, keeping its other sources and mappings. Nothing was downloaded now: the scripts only fetch the SDK when a teammate runs them.
     graders:
       - type: file-exists
         config:
@@ -287,11 +287,11 @@ stimuli:
       - type: file-contains
         config:
           path: install*.sh
-          value: 11.0.1xx-rc2
+          value: 12.0.1xx
       - type: file-contains
         config:
           path: install*.ps1
-          value: 11.0.1xx-rc2
+          value: 12.0.1xx
       - type: file-contains
         config:
           path: install*.sh
@@ -311,11 +311,19 @@ stimuli:
       - type: file-contains
         config:
           path: install*.sh
-          value: maui
+          value: ios
       - type: file-contains
         config:
           path: install*.ps1
-          value: maui
+          value: ios
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: android
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: android
       - type: file-contains
         config:
           path: install*.sh
@@ -354,7 +362,7 @@ stimuli:
       - type: file-contains
         config:
           path: NuGet.config
-          value: _packaging/dotnet11/
+          value: _packaging/dotnet12/
       - type: file-contains
         config:
           path: NuGet.config
@@ -365,16 +373,16 @@ stimuli:
           value: darc-pub-dotnet-macios
       - type: output-matches
         config:
-          pattern: '(dotnet11|pkgs\.dev\.azure\.com|darc-pub)'
+          pattern: '(dotnet12|pkgs\.dev\.azure\.com|darc-pub)'
       - type: output-not-matches
         config:
           pattern: '(dotnet-install: (Downloading|Extracting)|Installation finished successfully|Downloaded file size)'
       - type: prompt
     rubric:
-      - The scripts install from the 11.0.1xx-rc2 channel with the daily quality into ./.dotnet
-      - The scripts switch the installer to manifests update mode and check that the daily feeds are configured before installing maui, instead of running a plain workload install
-      - The scripts read workload list after the install and fail unless maui carries the band and lane of the SDK
-      - The agent wrote a NuGet.config with the dotnet11 feed and the darc-pub feeds of the maui dependencies, or added them to an existing one
+      - The scripts install from the 12.0.1xx channel with the daily quality into ./.dotnet
+      - The scripts switch the installer to manifests update mode and check that the daily feeds are configured before installing ios and android, instead of running a plain workload install
+      - The scripts read workload list after the install and fail unless ios and android carry the band of the SDK
+      - The agent wrote a NuGet.config with the dotnet12 feed and the darc-pub feeds of the iOS and Android workloads, taken from the previous major's dotnet/maui branches, or added them to an existing one
       - The agent did not download or install anything
 
   - name: Refuse a workload that no manifest of the band defines

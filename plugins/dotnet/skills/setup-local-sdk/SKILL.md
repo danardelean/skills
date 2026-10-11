@@ -242,7 +242,7 @@ QUALITY="preview"
 VERSION=""
 ROLL_FORWARD="latestFeature"
 ALLOW_PRERELEASE="true"
-WORKLOADS=("${@}")
+WORKLOADS=(); [ $# -eq 0 ] || WORKLOADS=("$@")  # "$@" alone is unbound under set -u in bash 3.2 (macOS)
 ERROR_MESSAGE="Required .NET SDK not found. Run ./install-dotnet.sh (or .ps1) to install it locally."
 INSTALL_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/dotnet-install.XXXXXX")"
 GLOBAL_JSON_TMP=""

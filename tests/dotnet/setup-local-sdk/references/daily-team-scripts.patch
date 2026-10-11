@@ -1,30 +1,32 @@
 diff --git a/NuGet.config b/NuGet.config
 new file mode 100644
-index 0000000..661d14d
+index 0000000..90c9f2a
 --- /dev/null
 +++ b/NuGet.config
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,14 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<configuration>
 +  <packageSources>
 +    <clear />
 +    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-+    <add key="dotnet11" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/index.json" />
-+    <!-- darc-pub feeds of dotnet/maui's NuGet.config on release/11.0.1xx-rc2, read on October 11, 2026 -->
-+    <add key="darc-pub-dotnet-android-db080b91" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-android-db080b91/nuget/v3/index.json" />
++    <add key="dotnet12" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/index.json" />
++    <!-- darc-pub feeds of dotnet/maui's NuGet.config on its net11.0 and release/11.0.1xx-rc2 branches (the alpha's iOS and
++         Android workloads still carry packs of the previous major), read on October 11, 2026 -->
++    <add key="darc-pub-dotnet-android-b4100484" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-android-b4100484/nuget/v3/index.json" />
 +    <add key="darc-pub-dotnet-android-db080b91-1" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-android-db080b91-1/nuget/v3/index.json" />
++    <add key="darc-pub-dotnet-android-db080b91" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-android-db080b91/nuget/v3/index.json" />
 +    <add key="darc-pub-dotnet-macios-fd471cba" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-macios-fd471cba/nuget/v3/index.json" />
 +  </packageSources>
 +</configuration>
 diff --git a/install-dotnet.ps1 b/install-dotnet.ps1
 new file mode 100644
-index 0000000..721d73a
+index 0000000..919ab32
 --- /dev/null
 +++ b/install-dotnet.ps1
 @@ -0,0 +1,78 @@
-+param([string[]]$Workloads = @('maui'))
++param([string[]]$Workloads = @('ios', 'android'))
 +$ErrorActionPreference = 'Stop'
-+$installDir = '.dotnet'; $channel = '11.0.1xx-rc2'; $quality = 'daily'
++$installDir = '.dotnet'; $channel = '12.0.1xx'; $quality = 'daily'
 +$version = ''; $rollForward = 'latestFeature'; $allowPrerelease = $true
 +$errorMessage = 'Required .NET SDK not found. Run ./install-dotnet.sh (or .ps1) to install it locally.'
 +$installScript = Join-Path $env:TEMP "dotnet-install-$([guid]::NewGuid()).ps1"
@@ -102,19 +104,19 @@ index 0000000..721d73a
 +Write-Host "Done. SDK: $sdkVersion"
 diff --git a/install-dotnet.sh b/install-dotnet.sh
 new file mode 100755
-index 0000000..a228f04
+index 0000000..b4e7085
 --- /dev/null
 +++ b/install-dotnet.sh
 @@ -0,0 +1,96 @@
 +#!/usr/bin/env bash
 +set -euo pipefail
 +INSTALL_DIR=".dotnet"
-+CHANNEL="11.0.1xx-rc2"
++CHANNEL="12.0.1xx"
 +QUALITY="daily"
 +VERSION=""
 +ROLL_FORWARD="latestFeature"
 +ALLOW_PRERELEASE="true"
-+WORKLOADS=("${@:-maui}")
++WORKLOADS=(ios android); [ $# -eq 0 ] || WORKLOADS=("$@")
 +ERROR_MESSAGE="Required .NET SDK not found. Run ./install-dotnet.sh (or .ps1) to install it locally."
 +INSTALL_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/dotnet-install.XXXXXX")"
 +GLOBAL_JSON_TMP=""
