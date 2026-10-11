@@ -183,10 +183,10 @@ stimuli:
           pattern: 'aka\.ms/dotnet'
       - type: output-matches
         config:
-          pattern: '(HEAD|redirect|url_effective|Location header|-I\b)'
+          pattern: '(--dry-run|-DryRun|dry run|HEAD|redirect|url_effective|Location header)'
       - type: output-not-matches
         config:
-          pattern: '(Downloading|Let me download|Installation finished successfully)'
+          pattern: '(dotnet-install: (Downloading|Extracting)|Installation finished successfully|Downloaded file size)'
       - type: prompt
     rubric:
       - The agent named a channel that identifies the RC 2 lane rather than the generic 11.0 channel, which resolves to the newest released preview

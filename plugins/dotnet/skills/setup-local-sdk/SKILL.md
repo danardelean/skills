@@ -220,6 +220,11 @@ it refuses to overwrite the file and prints the settings to merge manually.
 Adapt script variables to the install choice from Step 1: exact versions should
 use `--version` / `-Version` and `rollForward: "disable"`; channel installs should
 use channel/quality and only set `allowPrerelease: true` for prerelease SDKs.
+For a daily build set the quality to `daily`: the templates then switch the
+installer to manifests update mode and refuse to install workloads unless a
+`NuGet.config` with the daily feeds is present (see
+[references/daily-builds.md](references/daily-builds.md)), instead of running
+the plain install that fails on a daily.
 If `global.json` already pins `sdk.version` and the user mainly needs team
 scripts, reuse that version in the scripts and update `global.json` first; do
 not start a long SDK download just to discover the version. When the user asks
@@ -303,7 +308,14 @@ EOF
 }
 write_global_json
 grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitignore
-[ ${#WORKLOADS[@]} -gt 0 ] && "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
+if [ ${#WORKLOADS[@]} -gt 0 ]; then
+    if [ "$QUALITY" = "daily" ]; then
+        # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
+        [ -f NuGet.config ] || { echo "Daily SDK: list the daily feeds in NuGet.config before installing workloads (setup-local-sdk, references/daily-builds.md)." >&2; exit 1; }
+        "$INSTALL_DIR/dotnet" workload config --update-mode manifests
+    fi
+    "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
+fi
 echo "Done. SDK: $SDK_VERSION"
 ```
 
@@ -365,7 +377,14 @@ $globalJson | ConvertTo-Json -Depth 10 | Set-Content -Path 'global.json' -Encodi
 if (-not (Test-Path .gitignore) -or -not (Select-String -Path .gitignore -Pattern '^\.dotnet/$' -Quiet)) {
     Add-Content -Path .gitignore -Value '.dotnet/'
 }
-if ($Workloads.Count -gt 0) { & "$installDir\dotnet.exe" workload install @Workloads }
+if ($Workloads.Count -gt 0) {
+    if ($quality -eq 'daily') {
+        # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
+        if (-not (Test-Path 'NuGet.config')) { throw 'Daily SDK: list the daily feeds in NuGet.config before installing workloads (setup-local-sdk, references/daily-builds.md).' }
+        & "$installDir\dotnet.exe" workload config --update-mode manifests
+    }
+    & "$installDir\dotnet.exe" workload install @Workloads
+}
 Write-Host "Done. SDK: $sdkVersion"
 ```
 
@@ -398,14 +417,16 @@ is the RC 2 release branch, `11.0.1xx` the RTM release branch, `12.0.1xx` is
 `main`, already branded for the next major. The
 [builds table](https://github.com/dotnet/dotnet/blob/main/docs/builds-table.md)
 lists them but lags behind branding changes, so resolve a channel by the version
-it currently serves, without downloading. The archive link redirects to a URL
-that carries the version; an unknown channel does not 404, it lands on a search
-page, so check the pattern:
+it currently serves, without downloading: the install script's `--dry-run`
+(`-DryRun`) prints the payload URL, which carries the version.
 
 ```bash
-curl -sIL -o /dev/null -w '%{url_effective}\n' "https://aka.ms/dotnet/11.0.1xx-rc2/daily/dotnet-sdk-linux-x64.tar.gz"
-# .../Sdk/11.0.100-rc.2.26509.113/dotnet-sdk-11.0.100-rc.2.26509.113-linux-x64.tar.gz
+bash dotnet-install.sh --channel 11.0.1xx-rc2 --quality daily --dry-run
+# dotnet-install: URL #0 - aka.ms: .../Sdk/11.0.100-rc.2.26509.113/dotnet-sdk-11.0.100-rc.2.26509.113-osx-arm64.tar.gz
 ```
+
+The URL must contain `/Sdk/<version>/`. An unknown channel is not a 404: its
+aka.ms link lands on a search page, so no such URL means no such channel.
 
 Tell the user what the version means before installing: `rc.2` is the release
 candidate lane, `rtm` the release branch, `alpha.1` the next major. Steps 5 to 8

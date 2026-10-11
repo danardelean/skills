@@ -11,14 +11,18 @@ A daily *channel* is the name of a build lane of [dotnet/dotnet](https://github.
 branded for the next major). The
 [builds table](https://github.com/dotnet/dotnet/blob/main/docs/builds-table.md) lists channels but
 lags behind branding changes: in October 2026 it still called `11.0.1xx` "main" after `main` had
-moved to `12.0.1xx`. Resolve a channel to the build it serves without downloading; the archive link
-redirects to a URL that carries the version, and an unknown channel lands on a search page instead
-of a 404:
+moved to `12.0.1xx`. Resolve a channel to the build it serves without downloading: the install
+script's `--dry-run` (`-DryRun` in PowerShell) prints the payload URL, which carries the version. A
+HEAD request on the aka.ms archive link gives the same answer, since the link redirects to that URL.
 
 ```bash
+bash dotnet-install.sh --channel <CHANNEL> --quality daily --dry-run
+# dotnet-install: URL #0 - aka.ms: .../Sdk/11.0.100-rc.2.26509.113/dotnet-sdk-11.0.100-rc.2.26509.113-osx-arm64.tar.gz
 curl -sIL -o /dev/null -w '%{url_effective}\n' "https://aka.ms/dotnet/<CHANNEL>/daily/dotnet-sdk-linux-x64.tar.gz"
-# .../Sdk/11.0.100-rc.2.26509.113/dotnet-sdk-11.0.100-rc.2.26509.113-linux-x64.tar.gz
 ```
+
+The URL must contain `/Sdk/<version>/`. An unknown channel is not a 404: its aka.ms link lands on a
+search page, so no such URL means no such channel.
 
 Read the version, not the channel name: `rc.2` is the release candidate lane, `rtm` the release
 branch, `alpha.1` the next major. The SDK's *band* is the version without the build number
@@ -47,7 +51,7 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
 
    ```bash
    curl -fsSL "https://raw.githubusercontent.com/dotnet/maui/release/11.0.1xx-rc2/NuGet.config" \
-     | grep -o 'https://pkgs.dev.azure.com/dnceng/public/_packaging/[^"]*index.json'
+     | grep -o 'https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-\(android\|macios\)-[^"/]*/nuget/v3/index.json'
    ```
 
    ```xml
@@ -77,7 +81,8 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
    so the band's manifests are in place, change that version to the newest public `<previous>.0.x` in
    `.dotnet/sdk-manifests/<band>/microsoft.net.workload.mono.toolchain.net<previous>/*/WorkloadManifest.json`
    and in the sibling `microsoft.net.workload.emscripten.net<previous>` manifest, delete
-   `.dotnet/metadata/workloads/<band>/InstallState/default.json` if it exists, and install with
+   `.dotnet/metadata/workloads/<architecture>/<band>/InstallState/default.json` if it exists
+   (`<architecture>` is the process architecture, `Arm64` or `X64`), and install with
    `--skip-manifest-update`. Those packs only serve builds for the previous major from the new SDK.
    Tell the user this is a local edit of a throwaway SDK. Verified on an `11.0.1xx-rc2` daily in
    October 2026: after the edit, `maui 11.0.0-rc.2.26505.5/11.0.100-rc.2` installed.
