@@ -276,7 +276,7 @@ stimuli:
           - step_id: 1
             source: agent
             message: |-
-              Two scripts for teammates, install-dotnet.sh and install-dotnet.ps1, both pinned to the 11.0.1xx-rc2 channel with the daily quality, installing into ./.dotnet and defaulting the workload list to maui (pass other ids as arguments). A daily band has no manifests on nuget.org and no workload set, so a plain workload install would keep the SDK's months-old bundled manifests: the scripts switch the installer to manifests update mode, refuse to install workloads unless NuGet.config lists the dotnet11 feed, and after the install read workload list and fail unless maui carries the SDK's own band (11.0.100-rc.2) rather than a bundled older one. The repo also needs a NuGet.config with the dotnet11 feed on pkgs.dev.azure.com/dnceng/public and the darc-pub-dotnet-android-* and darc-pub-dotnet-macios-* feeds that dotnet/maui's NuGet.config lists on its release/11.0.1xx-rc2 branch; add them to the existing NuGet.config if the repo has one, keeping its other sources and mappings. Nothing was downloaded now: the scripts only fetch the SDK when a teammate runs them.
+              Two scripts for teammates, install-dotnet.sh and install-dotnet.ps1, both pinned to the 11.0.1xx-rc2 channel with the daily quality, installing into ./.dotnet and defaulting the workload list to maui (pass other ids as arguments). A daily band has no manifests on nuget.org and no workload set, so a plain workload install would keep the SDK's months-old bundled manifests: the scripts switch the installer to manifests update mode, refuse to install workloads unless NuGet.config lists the dotnet11 feed, and after the install read workload list and fail unless maui carries the SDK's own band (11.0.100-rc.2) and lane (an rc.2 build, not a main build published into the band) rather than a bundled older one. NuGet.config, next to the scripts, lists nuget.org, the dotnet11 feed on pkgs.dev.azure.com/dnceng/public and the darc-pub-dotnet-android-* and darc-pub-dotnet-macios-* feeds read from dotnet/maui's NuGet.config on its release/11.0.1xx-rc2 branch; a repo that already has a NuGet.config should get these sources added to it instead, keeping its other sources and mappings. Nothing was downloaded now: the scripts only fetch the SDK when a teammate runs them.
     graders:
       - type: file-exists
         config:
@@ -340,6 +340,29 @@ stimuli:
         config:
           path: install*.ps1
           value: NuGet.config
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: workload list
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: workload list
+      - type: file-exists
+        config:
+          path: NuGet.config
+      - type: file-contains
+        config:
+          path: NuGet.config
+          value: _packaging/dotnet11/
+      - type: file-contains
+        config:
+          path: NuGet.config
+          value: darc-pub-dotnet-android
+      - type: file-contains
+        config:
+          path: NuGet.config
+          value: darc-pub-dotnet-macios
       - type: output-matches
         config:
           pattern: '(dotnet11|pkgs\.dev\.azure\.com|darc-pub)'
@@ -350,7 +373,8 @@ stimuli:
     rubric:
       - The scripts install from the 11.0.1xx-rc2 channel with the daily quality into ./.dotnet
       - The scripts switch the installer to manifests update mode and check that the daily feeds are configured before installing maui, instead of running a plain workload install
-      - The agent explained which feeds NuGet.config needs for a daily band (the dotnet11 feed and the darc-pub feeds of the maui dependencies)
+      - The scripts read workload list after the install and fail unless maui carries the band and lane of the SDK
+      - The agent wrote a NuGet.config with the dotnet11 feed and the darc-pub feeds of the maui dependencies, or added them to an existing one
       - The agent did not download or install anything
 
   - name: Refuse a workload that no manifest of the band defines

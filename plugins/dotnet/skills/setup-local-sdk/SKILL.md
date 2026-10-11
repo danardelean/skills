@@ -317,12 +317,15 @@ if [ ${#WORKLOADS[@]} -gt 0 ]; then
     fi
     "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
     if [ "$QUALITY" = "daily" ]; then
-        # the install succeeds even when it fell back to bundled manifests of an older band: check the band
+        # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
+        # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
         BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
+        LANE="$(echo "$BAND" | sed -nE 's/^.*-(rc|preview)\.([0-9]+)$/(\1\\.\2|-p\2)([^0-9]|$)/p')"  # rc.2 or -p2 in the version; none for alpha or rtm
         LIST="$("$INSTALL_DIR/dotnet" workload list)"
         for w in "${WORKLOADS[@]}"; do
-            printf '%s\n' "$LIST" | grep -Eq "^${w}[[:space:]].*/${BAND}([[:space:]]|$)" \
-                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: manifest band is not ${BAND}, the installer fell back to an older band; see references/daily-builds.md." >&2; exit 1; }
+            ver="$(printf '%s\n' "$LIST" | awk -v w="$w" '$1 == w { print $2 }')"  # <manifest version>/<band>
+            case "$ver" in */"$BAND") [ -z "$LANE" ] || echo "${ver%%/*}" | grep -Eq "$LANE" ;; *) false ;; esac \
+                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: ${ver:-missing} is not a ${BAND} build of the SDK's lane; see references/daily-builds.md." >&2; exit 1; }
         done
     fi
 fi
@@ -400,12 +403,15 @@ if ($Workloads.Count -gt 0) {
     & "$installDir\dotnet.exe" workload install @Workloads
     if ($LASTEXITCODE -ne 0) { throw "workload install failed with exit code $LASTEXITCODE" }
     if ($quality -eq 'daily') {
-        # the install succeeds even when it fell back to bundled manifests of an older band: check the band
+        # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
+        # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
         $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
+        $lane = if ($band -match '-(rc|preview)\.(\d+)$') { "($($Matches[1])\.$($Matches[2])|-p$($Matches[2]))(\D|`$)" } else { '' }  # rc.2 or -p2 in the version; none for alpha or rtm
         $list = & "$installDir\dotnet.exe" workload list
         foreach ($w in $Workloads) {
-            if (-not ($list | Select-String -Pattern "^$w\s.*/$([regex]::Escape($band))(\s|`$)" -Quiet)) {
-                $list | Write-Host; throw "workload ${w}: manifest band is not $band, the installer fell back to an older band; see references/daily-builds.md."
+            $ver = $list | Where-Object { ($_ -split '\s+')[0] -eq $w } | ForEach-Object { ($_ -split '\s+')[1] } | Select-Object -First 1  # <manifest version>/<band>
+            if (-not ($ver -and $ver.EndsWith("/$band") -and (-not $lane -or $ver.Split('/')[0] -match $lane))) {
+                $list | Write-Host; throw "workload ${w}: $(if ($ver) { $ver } else { 'missing' }) is not a $band build of the SDK's lane; see references/daily-builds.md."
             }
         }
     }

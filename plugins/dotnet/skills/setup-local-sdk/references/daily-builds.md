@@ -106,6 +106,7 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
    build would otherwise import the targets of a manifest version that no longer exists.
 
 6. **Report truthfully.** A workload that no manifest of the band defines (no `maui` for a `12.0.1xx`
-   alpha while dotnet/maui still targets .NET 10) cannot come from that lane: say so, install the rest,
+   alpha while dotnet/maui builds for the previous major, from its `net11.0` and `release/11.0.1xx-*`
+   branches) cannot come from that lane: say so, install the rest,
    and point out that the SDK is usable without workloads. Never report a workload as installed when
    `workload list` shows a band older than the SDK's.

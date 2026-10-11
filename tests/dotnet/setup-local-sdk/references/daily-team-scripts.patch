@@ -1,9 +1,27 @@
+diff --git a/NuGet.config b/NuGet.config
+new file mode 100644
+index 0000000..661d14d
+--- /dev/null
++++ b/NuGet.config
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="utf-8"?>
++<configuration>
++  <packageSources>
++    <clear />
++    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
++    <add key="dotnet11" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/index.json" />
++    <!-- darc-pub feeds of dotnet/maui's NuGet.config on release/11.0.1xx-rc2, read on October 11, 2026 -->
++    <add key="darc-pub-dotnet-android-db080b91" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-android-db080b91/nuget/v3/index.json" />
++    <add key="darc-pub-dotnet-android-db080b91-1" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-android-db080b91-1/nuget/v3/index.json" />
++    <add key="darc-pub-dotnet-macios-fd471cba" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/darc-pub-dotnet-macios-fd471cba/nuget/v3/index.json" />
++  </packageSources>
++</configuration>
 diff --git a/install-dotnet.ps1 b/install-dotnet.ps1
 new file mode 100644
-index 0000000..557e631
+index 0000000..721d73a
 --- /dev/null
 +++ b/install-dotnet.ps1
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,78 @@
 +param([string[]]$Workloads = @('maui'))
 +$ErrorActionPreference = 'Stop'
 +$installDir = '.dotnet'; $channel = '11.0.1xx-rc2'; $quality = 'daily'
@@ -68,12 +86,15 @@ index 0000000..557e631
 +    & "$installDir\dotnet.exe" workload install @Workloads
 +    if ($LASTEXITCODE -ne 0) { throw "workload install failed with exit code $LASTEXITCODE" }
 +    if ($quality -eq 'daily') {
-+        # the install succeeds even when it fell back to bundled manifests of an older band: check the band
++        # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
++        # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
 +        $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
++        $lane = if ($band -match '-(rc|preview)\.(\d+)$') { "($($Matches[1])\.$($Matches[2])|-p$($Matches[2]))(\D|`$)" } else { '' }  # rc.2 or -p2 in the version; none for alpha or rtm
 +        $list = & "$installDir\dotnet.exe" workload list
 +        foreach ($w in $Workloads) {
-+            if (-not ($list | Select-String -Pattern "^$w\s.*/$([regex]::Escape($band))(\s|`$)" -Quiet)) {
-+                $list | Write-Host; throw "workload ${w}: manifest band is not $band, the installer fell back to an older band; see references/daily-builds.md."
++            $ver = $list | Where-Object { ($_ -split '\s+')[0] -eq $w } | ForEach-Object { ($_ -split '\s+')[1] } | Select-Object -First 1  # <manifest version>/<band>
++            if (-not ($ver -and $ver.EndsWith("/$band") -and (-not $lane -or $ver.Split('/')[0] -match $lane))) {
++                $list | Write-Host; throw "workload ${w}: $(if ($ver) { $ver } else { 'missing' }) is not a $band build of the SDK's lane; see references/daily-builds.md."
 +            }
 +        }
 +    }
@@ -81,10 +102,10 @@ index 0000000..557e631
 +Write-Host "Done. SDK: $sdkVersion"
 diff --git a/install-dotnet.sh b/install-dotnet.sh
 new file mode 100755
-index 0000000..6dc63d2
+index 0000000..a228f04
 --- /dev/null
 +++ b/install-dotnet.sh
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,96 @@
 +#!/usr/bin/env bash
 +set -euo pipefail
 +INSTALL_DIR=".dotnet"
@@ -168,12 +189,15 @@ index 0000000..6dc63d2
 +    fi
 +    "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
 +    if [ "$QUALITY" = "daily" ]; then
-+        # the install succeeds even when it fell back to bundled manifests of an older band: check the band
++        # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
++        # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
 +        BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
++        LANE="$(echo "$BAND" | sed -nE 's/^.*-(rc|preview)\.([0-9]+)$/(\1\\.\2|-p\2)([^0-9]|$)/p')"  # rc.2 or -p2 in the version; none for alpha or rtm
 +        LIST="$("$INSTALL_DIR/dotnet" workload list)"
 +        for w in "${WORKLOADS[@]}"; do
-+            printf '%s\n' "$LIST" | grep -Eq "^${w}[[:space:]].*/${BAND}([[:space:]]|$)" \
-+                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: manifest band is not ${BAND}, the installer fell back to an older band; see references/daily-builds.md." >&2; exit 1; }
++            ver="$(printf '%s\n' "$LIST" | awk -v w="$w" '$1 == w { print $2 }')"  # <manifest version>/<band>
++            case "$ver" in */"$BAND") [ -z "$LANE" ] || echo "${ver%%/*}" | grep -Eq "$LANE" ;; *) false ;; esac \
++                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: ${ver:-missing} is not a ${BAND} build of the SDK's lane; see references/daily-builds.md." >&2; exit 1; }
 +        done
 +    fi
 +fi
