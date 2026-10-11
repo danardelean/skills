@@ -390,7 +390,7 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "b5c43646e99246b9b090b4724cc069f765663e7acc9be55d8f8b2e8867334aa3  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "a91c421f314aef3786f4196064adc7cce5ff6870aa79b3be84b45de7e0dd5926  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: file-contains
@@ -494,8 +494,6 @@ stimuli:
       files:
         - src: ./fixtures/already-correct-setup
           dest: .
-        - src: ./fixtures/already-correct-setup
-          dest: .eval/expected
     golden_trajectory:
       inline:
         schema_version: "ATIF-v1.6"
@@ -542,7 +540,7 @@ stimuli:
           path: .dotnet/dotnet
       - type: run-command
         config:
-          command: cmp -s install-dotnet.sh .eval/expected/install-dotnet.sh && cmp -s install-dotnet.ps1 .eval/expected/install-dotnet.ps1 && cmp -s global.json .eval/expected/global.json && cmp -s .gitignore .eval/expected/.gitignore && [ "$(ls | sort | tr '\n' ' ')" = "global.json install-dotnet.ps1 install-dotnet.sh " ]
+          command: printf '%s\n' '6bef237e3c967437737a743a19728874f098bdddf40097cc6c8b13ac8a9635c2  install-dotnet.sh' '65e5c68596197bb8e9ad8f22d69c8372ac92105b1369d6bdd300287042c54a97  install-dotnet.ps1' '4216d34264b0d7a5ab4635c1c2f5bd74604b7fe9b8dbe8cea97c343490649e4b  global.json' 'a9b842eace120f22ff94adb9bc5da6b55191ecf7a1460c41d6ecd2696d4d5cbd  .gitignore' | sha256sum -c --quiet && [ "$(ls -A | grep -vx -e .eval -e .git | sort | tr '\n' ' ')" = ".gitignore global.json install-dotnet.ps1 install-dotnet.sh " ]
           expected_exit_code: 0
           timeout: 1m
       - type: output-not-matches

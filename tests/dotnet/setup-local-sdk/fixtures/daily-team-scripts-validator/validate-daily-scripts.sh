@@ -5,6 +5,7 @@
 #   2. a workload installed from an older band fails the script
 #   3. a workload from another lane of the same rc band fails the script
 #   4. without a NuGet config the script stops before workload install
+#   5. when workload install fails, build servers are still shut down and the failure is propagated
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 candidate="$(ls install*.sh 2>/dev/null | head -1)"
@@ -17,7 +18,7 @@ cat > "$stubs/fake-dotnet" <<'STUB'
 echo "$*" >> "$FAKE_LOG"
 case "${1:-}" in
   --version) echo "$FAKE_SDK_VERSION" ;;
-  workload) [ "${2:-}" = list ] && cat "$FAKE_LIST" ;;
+  workload) case "${2:-}" in list) cat "$FAKE_LIST" ;; install) exit "${FAKE_INSTALL_EXIT:-0}" ;; esac ;;
 esac
 exit 0
 STUB
@@ -39,7 +40,7 @@ out=""; while [ $# -gt 0 ]; do case "$1" in -O|--output-document) out="$2"; shif
 if [ -n "$out" ] && [ "$out" != "-" ]; then cp "$FAKE_INSTALL_SRC" "$out"; else cat "$FAKE_INSTALL_SRC"; fi
 STUB
 chmod +x "$stubs"/*
-export FAKE_DOTNET_SRC="$stubs/fake-dotnet" FAKE_INSTALL_SRC="$stubs/fake-install.sh"
+export FAKE_DOTNET_SRC="$stubs/fake-dotnet" FAKE_INSTALL_SRC="$stubs/fake-install.sh" FAKE_INSTALL_EXIT=0
 failures=0
 run() { # name, sdk version, expected exit (0 or nonzero), config (yes/no), list lines...
   local name="$1" version="$2" expect="$3" config="$4"; shift 4
@@ -66,4 +67,6 @@ run rc2-right-lane "$V11" 0 yes "ios     27.0.12212-net11-rc.2/11.0.100-rc.2   S
 run rc2-main-lane "$V11" 1 yes "ios     27.1.11007-xcode27.1-net11.0/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.99.0-preview.1.4/11.0.100-rc.2   SDK 11.0.100-rc.2"
 run no-config "$V12" 1 no "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 if [ -f "$root/no-config/calls.log" ] && grep -q '^workload install' "$root/no-config/calls.log"; then echo "FAIL  workload install ran without a NuGet config"; failures=$((failures+1)); else echo "ok    no workload install without a NuGet config"; fi
+FAKE_INSTALL_EXIT=1 run install-fails "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
+if [ -f "$root/install-fails/calls.log" ] && grep -q '^build-server shutdown' "$root/install-fails/calls.log"; then echo "ok    build-server shutdown after a failed install"; else echo "FAIL  build-server shutdown not called after a failed install"; failures=$((failures+1)); fi
 [ "$failures" -eq 0 ] && echo "all checks passed" || { echo "$failures check(s) failed"; exit 1; }
