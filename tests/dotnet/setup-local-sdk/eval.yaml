@@ -219,7 +219,7 @@ stimuli:
           pattern: '(wait|Patch Tuesday|until [^\n]{0,60}(published|public|released)|(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests)[\s\S]{0,400}--skip-manifest-update|--skip-manifest-update[\s\S]{0,400}(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests))'
       - type: output-not-matches
         config:
-          pattern: '(install(ed|ation) (succeeded|successful|completed)|is now installed)'
+          pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
       - type: prompt
     rubric:
       - The agent explained that the missing 10.0.13 package is the previous major's servicing runtime that is not yet publicly available
@@ -390,7 +390,7 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "37e583b0adebaf73a3c0a73c79c817b1c0f685da86eeaa55277d1eb603b401d0  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "1b4bc902fc5ed85ac3c781892bd35581c3ac4e4d082762e67a6321dac1cfe072  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: file-contains

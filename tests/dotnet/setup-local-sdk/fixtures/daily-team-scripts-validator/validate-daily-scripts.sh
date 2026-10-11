@@ -7,6 +7,7 @@
 #   4. without a NuGet config the script stops before workload install
 #   5. when workload install fails, build servers are still shut down and the failure is propagated
 #   6. workload install receives the requested ids (the fake dotnet rejects a call without ios and android)
+#   7. the successful run leaves global.json with the SDK version and sdk.paths, and .dotnet/ in .gitignore
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 candidate="$(ls install*.sh 2>/dev/null | head -1)"
@@ -67,6 +68,9 @@ if [ -f "$root/alpha-right-band/calls.log" ]; then
   ins=$(grep -n '^workload install' "$root/alpha-right-band/calls.log" | head -1 | cut -d: -f1)
   if [ -z "$cfg" ] || [ -z "$ins" ] || [ "$cfg" -gt "$ins" ]; then echo "FAIL  manifests update mode is not switched on before workload install"; failures=$((failures+1)); else echo "ok    manifests update mode before workload install"; fi
   grep -q '^build-server shutdown' "$root/alpha-right-band/calls.log" && echo "ok    build-server shutdown" || { echo "FAIL  build-server shutdown not called"; failures=$((failures+1)); }
+  gj="$root/alpha-right-band/global.json"
+  if [ -f "$gj" ] && grep -q '"paths"' "$gj" && grep -qF '.dotnet' "$gj" && grep -qF '$host$' "$gj" && grep -qF "$V12" "$gj"; then echo "ok    global.json pins $V12 with sdk.paths"; else echo "FAIL  global.json missing, or without the SDK version, \"paths\", .dotnet and \$host\$"; failures=$((failures+1)); fi
+  if [ -f "$root/alpha-right-band/.gitignore" ] && grep -qx '\.dotnet/' "$root/alpha-right-band/.gitignore"; then echo "ok    .gitignore excludes .dotnet/"; else echo "FAIL  .gitignore does not exclude .dotnet/"; failures=$((failures+1)); fi
 fi
 run alpha-stale-band "$V12" 1 yes "ios     26.5.12193-net11-rc.1/11.0.100-rc.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 run rc2-right-lane "$V11" 0 yes "ios     27.0.12212-net11-rc.2/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.2.0-rc.2.5/11.0.100-rc.2   SDK 11.0.100-rc.2"
