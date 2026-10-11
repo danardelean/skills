@@ -214,6 +214,9 @@ stimuli:
       - type: output-matches
         config:
           pattern: '(update-mode|workload set|manifests)'
+      - type: output-matches
+        config:
+          pattern: '(wait|Patch Tuesday|until .{0,60}(published|public|released)|10\.0\.12|WorkloadManifest\.json|sdk-manifests|--skip-manifest-update|(edit|patch|change|point)[^\n]{0,80}(compat|mono\.toolchain|emscripten|manifest))'
       - type: output-not-matches
         config:
           pattern: '(install(ed|ation) (succeeded|successful|completed)|is now installed)'
@@ -221,7 +224,8 @@ stimuli:
     rubric:
       - The agent explained that the missing 10.0.13 package is the previous major's servicing runtime that is not yet publicly available
       - The agent explained that nuget.org has no manifests for a daily band and that the installer fell back to the manifests bundled with the SDK
-      - The agent gave a concrete way forward, such as configuring the daily feeds and the manifests update mode, waiting for the runtime to be published, or pointing the compat manifests at a public version
+      - The agent explained that the daily feeds and the manifests update mode are needed but do not fix this failure by themselves while 10.0.13 is unpublished
+      - The agent gave a remedy that works now, either waiting for the runtime to be published or pointing the mono.toolchain and emscripten compat manifests at the newest public 10.0.x and installing with --skip-manifest-update, described as a local edit of a throwaway SDK
       - The agent did not claim the workload was installed
 
   - name: Detect workloads installed from an older band
@@ -380,6 +384,14 @@ stimuli:
         config:
           path: install*.ps1
           value: 'build of the SDK''s lane'
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: build-server shutdown
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: build-server shutdown
       - type: file-exists
         config:
           path: NuGet.config

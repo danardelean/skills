@@ -311,7 +311,8 @@ grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitigno
 if [ ${#WORKLOADS[@]} -gt 0 ]; then
     if [ "$QUALITY" = "daily" ]; then
         # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
-        grep -q "_packaging/dotnet${SDK_VERSION%%.*}/" NuGet.config 2>/dev/null \
+        CFG="$(ls NuGet.Config NuGet.config nuget.config 2>/dev/null | head -1)"  # the spellings NuGet reads on a case-sensitive file system
+        grep -q "_packaging/dotnet${SDK_VERSION%%.*}/" "${CFG:-NuGet.config}" 2>/dev/null \
             || { echo "Daily SDK: NuGet.config must list the dotnet${SDK_VERSION%%.*} feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md." >&2; exit 1; }
         "$INSTALL_DIR/dotnet" workload config --update-mode manifests
     fi
@@ -395,7 +396,8 @@ if ($Workloads.Count -gt 0) {
     if ($quality -eq 'daily') {
         # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
         $major = "$sdkVersion".Split('.')[0]
-        if (-not (Test-Path 'NuGet.config') -or -not (Select-String -Path 'NuGet.config' -Pattern "_packaging/dotnet$major/" -SimpleMatch -Quiet)) {
+        $cfg = @('NuGet.Config', 'NuGet.config', 'nuget.config') | Where-Object { Test-Path $_ } | Select-Object -First 1  # spellings NuGet reads on a case-sensitive file system
+        if (-not $cfg -or -not (Select-String -Path $cfg -Pattern "_packaging/dotnet$major/" -SimpleMatch -Quiet)) {
             throw "Daily SDK: NuGet.config must list the dotnet$major feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md."
         }
         & "$installDir\dotnet.exe" workload config --update-mode manifests
