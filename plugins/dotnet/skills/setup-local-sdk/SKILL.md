@@ -311,7 +311,7 @@ grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitigno
 if [ ${#WORKLOADS[@]} -gt 0 ]; then
     if [ "$QUALITY" = "daily" ]; then
         # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
-        CFG="$(ls NuGet.Config NuGet.config nuget.config 2>/dev/null | head -1)"  # the spellings NuGet reads on a case-sensitive file system
+        CFG=""; for f in NuGet.Config NuGet.config nuget.config; do if [ -f "$f" ]; then CFG="$f"; break; fi; done  # spellings NuGet reads on a case-sensitive file system
         grep -q "_packaging/dotnet${SDK_VERSION%%.*}/" "${CFG:-NuGet.config}" 2>/dev/null \
             || { echo "Daily SDK: NuGet.config must list the dotnet${SDK_VERSION%%.*} feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md." >&2; exit 1; }
         "$INSTALL_DIR/dotnet" workload config --update-mode manifests

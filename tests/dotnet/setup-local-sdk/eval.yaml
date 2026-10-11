@@ -194,7 +194,7 @@ stimuli:
       - The agent did not download or install anything
 
   - name: Diagnose a workload install failure on a daily SDK
-    prompt: 'I installed a daily .NET 11 SDK into ./.dotnet in my repo and ran ./.dotnet/dotnet workload install maui. It printed "No workload update found" and then failed with: Version 10.0.13 of package microsoft.netcore.app.runtime.aot.osx-arm64.cross.iossimulator-x64 is not found in NuGet feeds https://api.nuget.org/v3/index.json. What is wrong and what do I do?'
+    prompt: 'I installed a daily .NET 11 SDK into ./.dotnet in my repo and ran ./.dotnet/dotnet workload install maui. It printed "No workload update found" and then failed with: Version 10.0.13 of package microsoft.netcore.app.runtime.aot.osx-arm64.cross.iossimulator-x64 is not found in NuGet feeds https://api.nuget.org/v3/index.json. I checked nuget.org: the newest version of that package is 10.0.12, there is no 10.0.13. What is wrong and what do I do?'
     tags:
       capability: diagnose-daily-workload-failure
       risk: stuck-or-wrong-bits
@@ -224,8 +224,8 @@ stimuli:
     rubric:
       - The agent explained that the missing 10.0.13 package is the previous major's servicing runtime that is not yet publicly available
       - The agent explained that nuget.org has no manifests for a daily band and that the installer fell back to the manifests bundled with the SDK
-      - The agent explained that the daily feeds and the manifests update mode are needed but do not fix this failure by themselves while 10.0.13 is unpublished
-      - The agent gave a remedy that works now, either waiting for the runtime to be published or pointing the mono.toolchain and emscripten compat manifests at the newest public 10.0.x and installing with --skip-manifest-update, described as a local edit of a throwaway SDK
+      - The agent explained that the daily feeds and the manifests update mode are needed but do not fix this failure by themselves, since the user's evidence shows 10.0.13 is not on nuget.org
+      - The agent gave a remedy that works with that evidence, either waiting for 10.0.13 to be published or pointing the mono.toolchain and emscripten compat manifests at the public 10.0.12 and installing with --skip-manifest-update, described as a local edit of a throwaway SDK
       - The agent did not claim the workload was installed
 
   - name: Detect workloads installed from an older band
@@ -392,6 +392,46 @@ stimuli:
         config:
           path: install*.ps1
           value: build-server shutdown
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: '*/"$BAND")'
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: 'EndsWith("/$band")'
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: 'grep -Eq "$LANE"'
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: '-match $lane'
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: global.json
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: global.json
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: paths
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: paths
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: .gitignore
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: .gitignore
       - type: file-exists
         config:
           path: NuGet.config
@@ -426,7 +466,9 @@ stimuli:
       I have the 12.0.1xx daily SDK (12.0.100-alpha.1.26509.101) in ./.dotnet, the dotnet12 feed
       is in NuGet.config and the installer is in manifests update mode. ./.dotnet/dotnet workload
       install ios android maui installs ios and android from the 12.0.100-alpha.1 band, but maui
-      comes out as 11.0.0-rc.1.25470.5/11.0.100-rc.1. How do I get the .NET 12 maui workload?
+      comes out as 11.0.0-rc.1.25470.5/11.0.100-rc.1. I searched the dotnet12 feed and nuget.org:
+      the only Microsoft.NET.Sdk.Maui.Manifest-* packages are for 11.0.100-rc.1 and 11.0.100-rc.2,
+      none for 12.0.100-alpha.1. How do I get the .NET 12 maui workload?
     tags:
       capability: refuse-workload-absent-from-band
       risk: wrong-band-reported-as-right
@@ -448,10 +490,78 @@ stimuli:
           pattern: '(without (the )?maui|without workloads|ios and android|skip(ping)? maui|omit maui|leave maui out|drop maui)'
       - type: prompt
     rubric:
-      - The agent explained that no maui manifest exists for the 12.0.100-alpha.1 band, so the maui workload cannot come from that lane yet
+      - The agent concluded from the user's feed search that no maui manifest exists for the 12.0.100-alpha.1 band, so the maui workload cannot come from that lane until dotnet/maui publishes one
       - The agent explained that the 11.0.100-rc.1 maui is the installer falling back to the manifests bundled with the SDK, not the .NET 12 workload
-      - The agent told the user to install ios and android only, and that the SDK is usable without maui
+      - The agent told the user to install ios and android only, that the SDK is usable without maui, and how to check later whether a 12.0.100-alpha.1 maui manifest has appeared
       - The agent did not present a way to force the .NET 12 maui workload, such as rerunning the install with --skip-manifest-update or pointing at another band
+
+  - name: Leave an already-correct local SDK setup unchanged
+    prompt: >-
+      This repo already has install-dotnet.sh, install-dotnet.ps1, global.json and .gitignore for a
+      project-local .NET 11 preview SDK in ./.dotnet. A teammate says the setup looks incomplete.
+      Review it against what a project-local SDK setup needs and fix only what is actually wrong.
+      Do not download anything.
+    tags:
+      capability: idempotence
+      risk: unnecessary-rewrite
+      journey: verify-restraint
+    environment:
+      files:
+        - src: ./fixtures/already-correct-setup
+          dest: .
+    golden_trajectory:
+      inline:
+        schema_version: "ATIF-v1.6"
+        session_id: "setup-local-sdk-already-correct-noop"
+        agent: { name: reference, version: "1.0.0", model_name: curated }
+        steps:
+          - step_id: 1
+            source: agent
+            message: |-
+              The setup is already complete. global.json pins 11.0.100-rc.1.26425.128 with allowPrerelease, rollForward latestFeature, sdk.paths [".dotnet", "$host$"] so the local SDK wins and the host install is the fallback, and an errorMessage that points teammates at the scripts. .gitignore excludes .dotnet/. install-dotnet.sh and install-dotnet.ps1 download dotnet-install from dot.net, install the 11.0 preview channel into .dotnet, write that same global.json and ignore entry, and install the workloads passed as arguments. Nothing is missing, so there is nothing to change: a released preview's manifests are on nuget.org, so no NuGet.config is needed, PATH stays untouched because global.json resolves the SDK, and no download happens until someone runs a script.
+    graders:
+      - type: output-matches
+        config:
+          pattern: '(already|complete|correct|nothing (to|is) (fix|missing|change)|no changes?)'
+      - type: file-contains
+        config:
+          path: global.json
+          value: 11.0.100-rc.1.26425.128
+      - type: file-contains
+        config:
+          path: global.json
+          value: '"paths"'
+      - type: file-contains
+        config:
+          path: global.json
+          value: errorMessage
+      - type: file-contains
+        config:
+          path: .gitignore
+          value: .dotnet/
+      - type: file-contains
+        config:
+          path: install-dotnet.sh
+          value: CHANNEL="11.0"
+      - type: file-contains
+        config:
+          path: install-dotnet.ps1
+          value: $channel = '11.0'
+      - type: file-not-exists
+        config:
+          path: NuGet.config
+      - type: file-not-exists
+        config:
+          path: .dotnet/dotnet
+      - type: output-not-matches
+        config:
+          pattern: '(export\s+PATH|setx\s+PATH|\$env:PATH\s*=|dotnet-install: (Downloading|Extracting)|Installation finished successfully)'
+      - type: prompt
+    rubric:
+      - Determined that global.json, .gitignore and both scripts already form a complete project-local SDK setup
+      - Made no changes because nothing was missing or wrong
+      - Did not add a NuGet.config, PATH changes or other files that a released preview setup does not need
+      - Did not download or install anything
 
   - name: "Non-activation: system-wide nightly runtime on a server"
     prompt: >-
