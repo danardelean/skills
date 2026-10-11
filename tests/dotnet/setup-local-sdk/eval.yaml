@@ -254,3 +254,121 @@ stimuli:
       - The agent explained that the installer fell back to the manifests bundled with the SDK because the daily band's manifests were not reachable
       - The agent gave the feed and installer configuration needed to get the .NET 12 band
       - The agent told the user to verify the band in workload list after reinstalling
+
+  - name: Create team install scripts for a daily SDK with a workload
+    prompt: >-
+      Teammates cloning this repo should get the 11.0.1xx-rc2 daily .NET SDK into ./.dotnet
+      together with the maui workload by running one script, on macOS/Linux and on Windows.
+      Write the scripts and whatever else the repo needs for that. Do not download or install
+      anything now.
+    tags:
+      capability: daily-team-install-scripts
+      risk: stale-manifests-on-teammates
+      journey: team-setup
+    graders:
+      - type: file-exists
+        config:
+          path: install*.sh
+      - type: file-exists
+        config:
+          path: install*.ps1
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: daily
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: daily
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: update-mode manifests
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: update-mode manifests
+      - type: file-contains
+        config:
+          path: install*.sh
+          value: NuGet.config
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: NuGet.config
+      - type: output-matches
+        config:
+          pattern: '(dotnet11|pkgs\.dev\.azure\.com|darc-pub)'
+      - type: output-not-matches
+        config:
+          pattern: '(dotnet-install: (Downloading|Extracting)|Installation finished successfully|Downloaded file size)'
+      - type: prompt
+    rubric:
+      - The scripts install from the 11.0.1xx-rc2 channel with the daily quality into ./.dotnet
+      - The scripts switch the installer to manifests update mode and check that the daily feeds are configured before installing maui, instead of running a plain workload install
+      - The agent explained which feeds NuGet.config needs for a daily band (the dotnet11 feed and the darc-pub feeds of the maui dependencies)
+      - The agent did not download or install anything
+
+  - name: Refuse a workload that no manifest of the band defines
+    prompt: >-
+      I have the 12.0.1xx daily SDK (12.0.100-alpha.1.26509.101) in ./.dotnet, the dotnet12 feed
+      is in NuGet.config and the installer is in manifests update mode. ./.dotnet/dotnet workload
+      install ios android maui installs ios and android from the 12.0.100-alpha.1 band, but maui
+      comes out as 11.0.0-rc.1.25470.5/11.0.100-rc.1. How do I get the .NET 12 maui workload?
+    tags:
+      capability: refuse-workload-absent-from-band
+      risk: wrong-band-reported-as-right
+      journey: try-prerelease
+    constraints:
+      reject_tools:
+        - bash
+        - powershell
+        - web_fetch
+    graders:
+      - type: output-matches
+        config:
+          pattern: '(no (maui )?manifest|not (yet )?(available|published|exist)|does not (yet )?(exist|ship|publish)|has not (yet )?(moved|shipped|published|been published)|cannot (get|come|be installed)|there is no)'
+      - type: output-matches
+        config:
+          pattern: '(bundled|fell back|fallback|older band|previous band)'
+      - type: output-matches
+        config:
+          pattern: '(without (the )?maui|without workloads|ios and android|skip(ping)? maui|omit maui|leave maui out|drop maui)'
+      - type: prompt
+    rubric:
+      - The agent explained that no maui manifest exists for the 12.0.100-alpha.1 band, so the maui workload cannot come from that lane yet
+      - The agent explained that the 11.0.100-rc.1 maui is the installer falling back to the manifests bundled with the SDK, not the .NET 12 workload
+      - The agent told the user to install ios and android only, and that the SDK is usable without maui
+      - The agent did not present a way to force the .NET 12 maui workload, such as rerunning the install with --skip-manifest-update or pointing at another band
+
+  - name: "Non-activation: system-wide nightly runtime on a server"
+    prompt: >-
+      Our Ubuntu staging box needs the nightly .NET 11 ASP.NET Core runtime, no SDK, installed
+      system-wide so the deployed app picks it up on the next restart. How do I install it?
+    expect_activation: false
+    tags:
+      capability: dormancy-runtime-only-nightly
+      risk: routing
+      journey: boundary-condition
+    golden_trajectory:
+      inline:
+        schema_version: "ATIF-v1.6"
+        session_id: "setup-local-sdk-runtime-only-dormancy"
+        agent: { name: reference, version: "1.0.0", model_name: curated }
+        steps:
+          - step_id: 1
+            source: agent
+            message: |-
+              This is a system-wide, runtime-only install, so the project-local SDK setup (a .dotnet folder in a repo, global.json paths, team install scripts) does not apply here and I did not use it. On Ubuntu, install the runtime with the official script and the daily quality, into the system location: curl -fsSL https://dot.net/v1/dotnet-install.sh | sudo bash -s -- --runtime aspnetcore --channel 11.0 --quality daily --install-dir /usr/share/dotnet, then make sure /usr/share/dotnet/dotnet is on PATH (or symlinked to /usr/bin/dotnet) and restart the app so it picks up the new runtime. Daily runtimes are not in the Ubuntu package feeds, so the distro packages (apt) will not give you a nightly.
+    graders:
+      - type: output-matches
+        config:
+          pattern: '(--runtime\s+aspnetcore|aspnetcore|runtime-only|runtime only)'
+      - type: output-not-matches
+        config:
+          pattern: '(--install-dir\s+\.dotnet|"paths"\s*:|sdk\.paths|install-dotnet\.(sh|ps1))'
+      - type: prompt
+    rubric:
+      - Recognized this is a system-wide, runtime-only install, outside the scope of the project-local SDK setup
+      - Did not apply the local SDK workflow, so no .dotnet folder in a repo, no global.json paths, no team install scripts
+      - Pointed to a runtime-only route such as dotnet-install.sh with --runtime aspnetcore and the daily quality, installed system-wide
