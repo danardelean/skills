@@ -351,6 +351,14 @@ stimuli:
       - type: file-contains
         config:
           path: install*.sh
+          value: workload install
+      - type: file-contains
+        config:
+          path: install*.ps1
+          value: workload install
+      - type: file-contains
+        config:
+          path: install*.sh
           value: workload list
       - type: file-contains
         config:

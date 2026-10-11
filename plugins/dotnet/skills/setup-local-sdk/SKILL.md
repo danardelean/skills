@@ -317,6 +317,7 @@ if [ ${#WORKLOADS[@]} -gt 0 ]; then
     fi
     "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
     if [ "$QUALITY" = "daily" ]; then
+        "$INSTALL_DIR/dotnet" build-server shutdown >/dev/null  # running MSBuild nodes keep the manifests they loaded
         # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
         # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
         BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
@@ -403,6 +404,7 @@ if ($Workloads.Count -gt 0) {
     & "$installDir\dotnet.exe" workload install @Workloads
     if ($LASTEXITCODE -ne 0) { throw "workload install failed with exit code $LASTEXITCODE" }
     if ($quality -eq 'daily') {
+        & "$installDir\dotnet.exe" build-server shutdown | Out-Null  # running MSBuild nodes keep the manifests they loaded
         # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
         # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
         $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
