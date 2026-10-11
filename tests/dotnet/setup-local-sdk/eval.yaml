@@ -269,6 +269,10 @@ stimuli:
       capability: daily-team-install-scripts
       risk: stale-manifests-on-teammates
       journey: team-setup
+    environment:
+      files:
+        - src: ./fixtures/daily-team-scripts-validator
+          dest: .eval
     golden_patch:
       path: ./references/daily-team-scripts.patch
     golden_trajectory:
@@ -370,18 +374,10 @@ stimuli:
           value: workload list
       - type: file-contains
         config:
-          path: install*.sh
-          value: 'for w in "${WORKLOADS[@]}"'
-      - type: file-contains
-        config:
           path: install*.ps1
           value: 'foreach ($w in $Workloads)'
       - type: file-contains
         config:
-          path: install*.sh
-          value: 'build of the SDK''s lane'
-      - type: file-contains
-        config:
           path: install*.ps1
           value: 'build of the SDK''s lane'
       - type: file-contains
@@ -392,22 +388,11 @@ stimuli:
         config:
           path: install*.ps1
           value: build-server shutdown
-      - type: file-contains
+      - type: run-command
         config:
-          path: install*.sh
-          value: '*/"$BAND")'
-      - type: file-contains
-        config:
-          path: install*.ps1
-          value: 'EndsWith("/$band")'
-      - type: file-contains
-        config:
-          path: install*.sh
-          value: 'grep -Eq "$LANE"'
-      - type: file-contains
-        config:
-          path: install*.ps1
-          value: '-match $lane'
+          command: echo "b5c43646e99246b9b090b4724cc069f765663e7acc9be55d8f8b2e8867334aa3  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          expected_exit_code: 0
+          timeout: 2m
       - type: file-contains
         config:
           path: install*.sh
@@ -509,6 +494,8 @@ stimuli:
       files:
         - src: ./fixtures/already-correct-setup
           dest: .
+        - src: ./fixtures/already-correct-setup
+          dest: .eval/expected
     golden_trajectory:
       inline:
         schema_version: "ATIF-v1.6"
@@ -553,6 +540,11 @@ stimuli:
       - type: file-not-exists
         config:
           path: .dotnet/dotnet
+      - type: run-command
+        config:
+          command: cmp -s install-dotnet.sh .eval/expected/install-dotnet.sh && cmp -s install-dotnet.ps1 .eval/expected/install-dotnet.ps1 && cmp -s global.json .eval/expected/global.json && cmp -s .gitignore .eval/expected/.gitignore && [ "$(ls | sort | tr '\n' ' ')" = "global.json install-dotnet.ps1 install-dotnet.sh " ]
+          expected_exit_code: 0
+          timeout: 1m
       - type: output-not-matches
         config:
           pattern: '(export\s+PATH|setx\s+PATH|\$env:PATH\s*=|dotnet-install: (Downloading|Extracting)|Installation finished successfully)'

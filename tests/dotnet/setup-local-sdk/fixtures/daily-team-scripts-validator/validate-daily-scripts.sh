@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Behavioral check of the generated bash team script for a daily SDK. Runs the script against a
+# stubbed network and a stubbed dotnet, and checks the outcomes, not the syntax:
+#   1. manifests update mode is switched on before workload install, and build servers are shut down
+#   2. a workload installed from an older band fails the script
+#   3. a workload from another lane of the same rc band fails the script
+#   4. without a NuGet config the script stops before workload install
+set -uo pipefail
+cd "$(dirname "$0")/.." || exit 2
+candidate="$(ls install*.sh 2>/dev/null | head -1)"
+[ -n "$candidate" ] || { echo "no install*.sh in the workspace" >&2; exit 1; }
+root="$(mktemp -d "${TMPDIR:-/tmp}/daily-scripts-check.XXXXXX")"; trap 'rm -rf "$root"' EXIT
+stubs="$root/stubs"; mkdir -p "$stubs"
+# fake dotnet: logs every call, answers --version and workload list from the scenario
+cat > "$stubs/fake-dotnet" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE_LOG"
+case "${1:-}" in
+  --version) echo "$FAKE_SDK_VERSION" ;;
+  workload) [ "${2:-}" = list ] && cat "$FAKE_LIST" ;;
+esac
+exit 0
+STUB
+# fake dotnet-install: creates <install-dir>/dotnet from the fake dotnet
+cat > "$stubs/fake-install.sh" <<'STUB'
+#!/usr/bin/env bash
+dir=".dotnet"; while [ $# -gt 0 ]; do case "$1" in --install-dir|-i) dir="$2"; shift ;; --install-dir=*) dir="${1#*=}" ;; esac; shift; done
+mkdir -p "$dir" && cp "$FAKE_DOTNET_SRC" "$dir/dotnet" && chmod +x "$dir/dotnet"
+STUB
+# curl / wget stubs: serve the fake installer to -o/-O <file> or to stdout
+cat > "$stubs/curl" <<'STUB'
+#!/usr/bin/env bash
+out=""; while [ $# -gt 0 ]; do case "$1" in -o|--output) out="$2"; shift ;; -[a-zA-Z]*o) out="$2"; shift ;; --output=*) out="${1#*=}" ;; esac; shift; done
+if [ -n "$out" ]; then cp "$FAKE_INSTALL_SRC" "$out"; else cat "$FAKE_INSTALL_SRC"; fi
+STUB
+cat > "$stubs/wget" <<'STUB'
+#!/usr/bin/env bash
+out=""; while [ $# -gt 0 ]; do case "$1" in -O|--output-document) out="$2"; shift ;; -*O) out="$2"; shift ;; --output-document=*) out="${1#*=}" ;; esac; shift; done
+if [ -n "$out" ] && [ "$out" != "-" ]; then cp "$FAKE_INSTALL_SRC" "$out"; else cat "$FAKE_INSTALL_SRC"; fi
+STUB
+chmod +x "$stubs"/*
+export FAKE_DOTNET_SRC="$stubs/fake-dotnet" FAKE_INSTALL_SRC="$stubs/fake-install.sh"
+failures=0
+run() { # name, sdk version, expected exit (0 or nonzero), config (yes/no), list lines...
+  local name="$1" version="$2" expect="$3" config="$4"; shift 4
+  local box="$root/$name"; mkdir -p "$box"; cp "$candidate" "$box/install.sh"
+  export FAKE_LOG="$box/calls.log" FAKE_SDK_VERSION="$version" FAKE_LIST="$box/list.txt"
+  : > "$FAKE_LOG"; { printf 'Installed Workload Id   Manifest Versions   Installation Source\n---\n'; printf '%s\n' "$@"; } > "$FAKE_LIST"
+  [ "$config" = yes ] && printf '<configuration><packageSources><add key="dotnet11" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/index.json" /><add key="dotnet12" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/index.json" /></packageSources></configuration>' > "$box/NuGet.config"
+  local rc=0; ( cd "$box" && PATH="$stubs:$PATH" bash ./install.sh ios android ) > "$box/out.txt" 2>&1 || rc=$?
+  if [ "$expect" = 0 ] && [ "$rc" -ne 0 ]; then echo "FAIL  $name: exited $rc, expected success"; sed 's/^/      /' "$box/out.txt" | tail -5; failures=$((failures+1)); return; fi
+  if [ "$expect" != 0 ] && [ "$rc" -eq 0 ]; then echo "FAIL  $name: exited 0, expected a failure"; failures=$((failures+1)); return; fi
+  echo "ok    $name (exit $rc)"
+}
+V12="12.0.100-alpha.1.26509.101"; V11="11.0.100-rc.2.26509.113"
+run alpha-right-band "$V12" 0 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
+# the successful run must switch to manifests mode before installing, and shut down build servers
+if [ -f "$root/alpha-right-band/calls.log" ]; then
+  cfg=$(grep -n '^workload config --update-mode manifests' "$root/alpha-right-band/calls.log" | head -1 | cut -d: -f1)
+  ins=$(grep -n '^workload install' "$root/alpha-right-band/calls.log" | head -1 | cut -d: -f1)
+  if [ -z "$cfg" ] || [ -z "$ins" ] || [ "$cfg" -gt "$ins" ]; then echo "FAIL  manifests update mode is not switched on before workload install"; failures=$((failures+1)); else echo "ok    manifests update mode before workload install"; fi
+  grep -q '^build-server shutdown' "$root/alpha-right-band/calls.log" && echo "ok    build-server shutdown" || { echo "FAIL  build-server shutdown not called"; failures=$((failures+1)); }
+fi
+run alpha-stale-band "$V12" 1 yes "ios     26.5.12193-net11-rc.1/11.0.100-rc.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
+run rc2-right-lane "$V11" 0 yes "ios     27.0.12212-net11-rc.2/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.2.0-rc.2.5/11.0.100-rc.2   SDK 11.0.100-rc.2"
+run rc2-main-lane "$V11" 1 yes "ios     27.1.11007-xcode27.1-net11.0/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.99.0-preview.1.4/11.0.100-rc.2   SDK 11.0.100-rc.2"
+run no-config "$V12" 1 no "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
+if [ -f "$root/no-config/calls.log" ] && grep -q '^workload install' "$root/no-config/calls.log"; then echo "FAIL  workload install ran without a NuGet config"; failures=$((failures+1)); else echo "ok    no workload install without a NuGet config"; fi
+[ "$failures" -eq 0 ] && echo "all checks passed" || { echo "$failures check(s) failed"; exit 1; }

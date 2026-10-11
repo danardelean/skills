@@ -12,7 +12,7 @@ INSTALL_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/dotnet-install.XXXXXX")"
 GLOBAL_JSON_TMP=""
 cleanup() {
     rm -f "$INSTALL_SCRIPT"
-    [ -n "$GLOBAL_JSON_TMP" ] && rm -f "$GLOBAL_JSON_TMP"
+    [ -z "$GLOBAL_JSON_TMP" ] || rm -f "$GLOBAL_JSON_TMP"  # a failing && list in the EXIT trap would turn a successful run into exit 1 under set -e
 }
 trap cleanup EXIT
 curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$INSTALL_SCRIPT"
@@ -80,9 +80,10 @@ if [ ${#WORKLOADS[@]} -gt 0 ]; then
             || { echo "Daily SDK: NuGet.config must list the dotnet${SDK_VERSION%%.*} feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md." >&2; exit 1; }
         "$INSTALL_DIR/dotnet" workload config --update-mode manifests
     fi
-    "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
+    rc=0; "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}" || rc=$?
     if [ "$QUALITY" = "daily" ]; then
-        "$INSTALL_DIR/dotnet" build-server shutdown >/dev/null  # running MSBuild nodes keep the manifests they loaded
+        "$INSTALL_DIR/dotnet" build-server shutdown >/dev/null  # even after a failed install: nodes keep the manifests they loaded
+        [ "$rc" -eq 0 ] || exit "$rc"
         # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
         # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
         BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
@@ -94,5 +95,6 @@ if [ ${#WORKLOADS[@]} -gt 0 ]; then
                 || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: ${ver:-missing} is not a ${BAND} build of the SDK's lane; see references/daily-builds.md." >&2; exit 1; }
         done
     fi
+    [ "$rc" -eq 0 ] || exit "$rc"
 fi
 echo "Done. SDK: $SDK_VERSION"

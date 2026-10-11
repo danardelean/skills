@@ -20,10 +20,10 @@ index 0000000..90c9f2a
 +</configuration>
 diff --git a/install-dotnet.ps1 b/install-dotnet.ps1
 new file mode 100644
-index 0000000..ac4a0bd
+index 0000000..123821a
 --- /dev/null
 +++ b/install-dotnet.ps1
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,81 @@
 +param([string[]]$Workloads = @('ios', 'android'))
 +$ErrorActionPreference = 'Stop'
 +$installDir = '.dotnet'; $channel = '12.0.1xx'; $quality = 'daily'
@@ -86,10 +86,10 @@ index 0000000..ac4a0bd
 +        & "$installDir\dotnet.exe" workload config --update-mode manifests
 +        if ($LASTEXITCODE -ne 0) { throw "workload config --update-mode manifests failed with exit code $LASTEXITCODE" }
 +    }
-+    & "$installDir\dotnet.exe" workload install @Workloads
-+    if ($LASTEXITCODE -ne 0) { throw "workload install failed with exit code $LASTEXITCODE" }
++    & "$installDir\dotnet.exe" workload install @Workloads; $rc = $LASTEXITCODE
 +    if ($quality -eq 'daily') {
-+        & "$installDir\dotnet.exe" build-server shutdown | Out-Null; if ($LASTEXITCODE -ne 0) { throw "build-server shutdown failed with exit code $LASTEXITCODE" }  # nodes keep loaded manifests
++        & "$installDir\dotnet.exe" build-server shutdown | Out-Null; if ($LASTEXITCODE -ne 0) { throw "build-server shutdown failed with exit code $LASTEXITCODE" }  # even after a failed install
++        if ($rc -ne 0) { throw "workload install failed with exit code $rc" }
 +        # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
 +        # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
 +        $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
@@ -102,14 +102,15 @@ index 0000000..ac4a0bd
 +            }
 +        }
 +    }
++    if ($rc -ne 0) { throw "workload install failed with exit code $rc" }
 +}
 +Write-Host "Done. SDK: $sdkVersion"
 diff --git a/install-dotnet.sh b/install-dotnet.sh
 new file mode 100755
-index 0000000..3d02ccd
+index 0000000..fc3df8a
 --- /dev/null
 +++ b/install-dotnet.sh
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,100 @@
 +#!/usr/bin/env bash
 +set -euo pipefail
 +INSTALL_DIR=".dotnet"
@@ -124,7 +125,7 @@ index 0000000..3d02ccd
 +GLOBAL_JSON_TMP=""
 +cleanup() {
 +    rm -f "$INSTALL_SCRIPT"
-+    [ -n "$GLOBAL_JSON_TMP" ] && rm -f "$GLOBAL_JSON_TMP"
++    [ -z "$GLOBAL_JSON_TMP" ] || rm -f "$GLOBAL_JSON_TMP"  # a failing && list in the EXIT trap would turn a successful run into exit 1 under set -e
 +}
 +trap cleanup EXIT
 +curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$INSTALL_SCRIPT"
@@ -192,9 +193,10 @@ index 0000000..3d02ccd
 +            || { echo "Daily SDK: NuGet.config must list the dotnet${SDK_VERSION%%.*} feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md." >&2; exit 1; }
 +        "$INSTALL_DIR/dotnet" workload config --update-mode manifests
 +    fi
-+    "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}"
++    rc=0; "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}" || rc=$?
 +    if [ "$QUALITY" = "daily" ]; then
-+        "$INSTALL_DIR/dotnet" build-server shutdown >/dev/null  # running MSBuild nodes keep the manifests they loaded
++        "$INSTALL_DIR/dotnet" build-server shutdown >/dev/null  # even after a failed install: nodes keep the manifests they loaded
++        [ "$rc" -eq 0 ] || exit "$rc"
 +        # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
 +        # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
 +        BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
@@ -206,5 +208,6 @@ index 0000000..3d02ccd
 +                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: ${ver:-missing} is not a ${BAND} build of the SDK's lane; see references/daily-builds.md." >&2; exit 1; }
 +        done
 +    fi
++    [ "$rc" -eq 0 ] || exit "$rc"
 +fi
 +echo "Done. SDK: $SDK_VERSION"

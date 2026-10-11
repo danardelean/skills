@@ -60,10 +60,10 @@ if ($Workloads.Count -gt 0) {
         & "$installDir\dotnet.exe" workload config --update-mode manifests
         if ($LASTEXITCODE -ne 0) { throw "workload config --update-mode manifests failed with exit code $LASTEXITCODE" }
     }
-    & "$installDir\dotnet.exe" workload install @Workloads
-    if ($LASTEXITCODE -ne 0) { throw "workload install failed with exit code $LASTEXITCODE" }
+    & "$installDir\dotnet.exe" workload install @Workloads; $rc = $LASTEXITCODE
     if ($quality -eq 'daily') {
-        & "$installDir\dotnet.exe" build-server shutdown | Out-Null; if ($LASTEXITCODE -ne 0) { throw "build-server shutdown failed with exit code $LASTEXITCODE" }  # nodes keep loaded manifests
+        & "$installDir\dotnet.exe" build-server shutdown | Out-Null; if ($LASTEXITCODE -ne 0) { throw "build-server shutdown failed with exit code $LASTEXITCODE" }  # even after a failed install
+        if ($rc -ne 0) { throw "workload install failed with exit code $rc" }
         # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
         # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
         $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
@@ -76,5 +76,6 @@ if ($Workloads.Count -gt 0) {
             }
         }
     }
+    if ($rc -ne 0) { throw "workload install failed with exit code $rc" }
 }
 Write-Host "Done. SDK: $sdkVersion"
