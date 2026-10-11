@@ -216,7 +216,7 @@ stimuli:
           pattern: '(update-mode|workload set|manifests)'
       - type: output-matches
         config:
-          pattern: '(wait|Patch Tuesday|until [^\n]{0,60}(published|public|released)|(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests)[\s\S]{0,400}--skip-manifest-update|--skip-manifest-update[\s\S]{0,400}(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests))'
+          pattern: '(?i)(wait(ing)?[^\n]{0,80}(publish|public|Patch Tuesday|10\.0\.13|nuget\.org)|Patch Tuesday|until [^\n]{0,60}(published|public|released)|(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests)[\s\S]{0,400}--skip-manifest-update|--skip-manifest-update[\s\S]{0,400}(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests))'
       - type: output-not-matches
         config:
           pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
@@ -420,6 +420,9 @@ stimuli:
       - type: file-exists
         config:
           path: NuGet.config
+      - type: file-not-exists
+        config:
+          path: .dotnet/dotnet
       - type: file-contains
         config:
           path: NuGet.config
@@ -472,7 +475,7 @@ stimuli:
           pattern: '(bundled|fell back|fallback|older band|previous band)'
       - type: output-matches
         config:
-          pattern: '(without (the )?maui|without workloads|ios and android|skip(ping)? maui|omit maui|leave maui out|drop maui)'
+          pattern: '(without (the )?maui|ios and android|android and ios|skip(ping)? maui|omit(ting)? maui|leave maui out|drop(ping)? maui|keep (the )?(ios|android))'
       - type: prompt
     rubric:
       - The agent concluded from the user's feed search that no maui manifest exists for the 12.0.100-alpha.1 band, so the maui workload cannot come from that lane until dotnet/maui publishes one

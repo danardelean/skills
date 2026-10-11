@@ -44,12 +44,14 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
    built with the daily need them too: their restore pulls `Microsoft.NETCore.App.Ref` and the
    runtime packs of the daily version, which are not on nuget.org (NU1102 otherwise). If the
    repository already has a `NuGet.config`, add the sources to it and keep everything else: existing
-   sources, credentials, and `packageSourceMapping` (give each new source a mapping, or restores
-   that use mappings never look at it). `./.dotnet/dotnet nuget add source <url> --name <name>
-   --configfile <existing file>` does that without touching other settings; the file is
-   `NuGet.Config`, `NuGet.config` or `nuget.config`, whichever the repository has, since NuGet reads
-   all three on a case-sensitive file system. Only create the standalone file below, with its
-   `<clear />`, when the repository has none. Sources: the `dotnet<major>`
+   sources, credentials, and `packageSourceMapping`. `./.dotnet/dotnet nuget add source <url>
+   --name <name> --configfile <existing file>` adds a source without touching other settings, but
+   it never writes mappings: when the file has a `<packageSourceMapping>` section, add
+   `<packageSource key="<name>"><package pattern="*" /></packageSource>` for each new source by
+   hand, or restores that use mappings never look at it. The file is `NuGet.Config`,
+   `NuGet.config` or `nuget.config`, whichever the repository has, since NuGet reads all three on a
+   case-sensitive file system. Only create the standalone file below, with its `<clear />`, when
+   the repository has none. Sources: the `dotnet<major>`
    feed, plus the `darc-pub-*` feeds listed in dotnet/maui's `NuGet.config` on the branch of the band:
    `release/<major>.0.1xx-<label without the dot>` for a preview or rc band (`release/11.0.1xx-rc2`),
    `net<major>.0` for a release band, `main` for an alpha. For an alpha, read the previous major's
