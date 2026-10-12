@@ -11,6 +11,7 @@
 #   8. dotnet-install is called with --channel 12.0.1xx --quality daily --install-dir .dotnet
 #   9. the workspace NuGet config is valid XML with active nuget.org, dotnet12, android and macios sources
 #  10. a wrong-band or wrong-lane workload is caught in any position of the list, not only the first
+#  11. run without arguments, the script installs ios and android by default
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 candidate="$(ls install*.sh 2>/dev/null | head -1)"
@@ -60,6 +61,7 @@ if [ -n "$out" ] && [ "$out" != "-" ]; then cp "$FAKE_INSTALL_SRC" "$out"; else 
 STUB
 chmod +x "$stubs"/*
 export FAKE_DOTNET_SRC="$stubs/fake-dotnet" FAKE_INSTALL_SRC="$stubs/fake-install.sh" FAKE_INSTALL_EXIT=0 EXPECT_CHANNEL="12.0.1xx"
+RUN_ARGS="ios android"  # arguments passed to the candidate; empty for the no-argument default case
 failures=0
 # the NuGet config next to the scripts: valid XML, with the four sources active
 cfg=""; for f in NuGet.Config NuGet.config nuget.config; do if [ -f "$f" ]; then cfg="$f"; break; fi; done
@@ -88,7 +90,8 @@ run() { # name, sdk version, expected exit (0 or nonzero), config (yes/no), list
   export FAKE_LOG="$box/calls.log" FAKE_SDK_VERSION="$version" FAKE_LIST="$box/list.txt"
   : > "$FAKE_LOG"; { printf 'Installed Workload Id   Manifest Versions   Installation Source\n---\n'; printf '%s\n' "$@"; } > "$FAKE_LIST"
   [ "$config" = yes ] && printf '<configuration><packageSources><add key="dotnet11" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/index.json" /><add key="dotnet12" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/index.json" /></packageSources></configuration>' > "$box/NuGet.config"
-  local rc=0; ( cd "$box" && PATH="$stubs:$PATH" bash ./install.sh ios android ) > "$box/out.txt" 2>&1 || rc=$?
+  # shellcheck disable=SC2086
+  local rc=0; ( cd "$box" && PATH="$stubs:$PATH" bash ./install.sh $RUN_ARGS ) > "$box/out.txt" 2>&1 || rc=$?
   if [ "$expect" = 0 ] && [ "$rc" -ne 0 ]; then echo "FAIL  $name: exited $rc, expected success"; sed 's/^/      /' "$box/out.txt" | tail -5; failures=$((failures+1)); return; fi
   if [ "$expect" != 0 ] && [ "$rc" -eq 0 ]; then echo "FAIL  $name: exited 0, expected a failure"; failures=$((failures+1)); return; fi
   echo "ok    $name (exit $rc)"
@@ -112,6 +115,8 @@ run rc2-main-lane "$V11" 1 yes "ios     27.1.11007-xcode27.1-net11.0/11.0.100-rc
 run rc2-main-lane-second "$V11" 1 yes "ios     27.0.12212-net11-rc.2/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.99.0-preview.1.4/11.0.100-rc.2   SDK 11.0.100-rc.2"
 run no-config "$V12" 1 no "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 if [ -f "$root/no-config/calls.log" ] && grep -q '^workload install' "$root/no-config/calls.log"; then echo "FAIL  workload install ran without a NuGet config"; failures=$((failures+1)); else echo "ok    no workload install without a NuGet config"; fi
+RUN_ARGS="" run alpha-no-args "$V12" 0 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
+if [ -f "$root/alpha-no-args/calls.log" ] && grep -q '^workload install' "$root/alpha-no-args/calls.log"; then echo "ok    no arguments: workload install ran with the default ids"; else echo "FAIL  no arguments: workload install did not run (no default workloads)"; failures=$((failures+1)); fi
 FAKE_INSTALL_EXIT=1 run install-fails "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 if [ -f "$root/install-fails/calls.log" ] && grep -q '^build-server shutdown' "$root/install-fails/calls.log"; then echo "ok    build-server shutdown after a failed install"; else echo "FAIL  build-server shutdown not called after a failed install"; failures=$((failures+1)); fi
 [ "$failures" -eq 0 ] && echo "all checks passed" || { echo "$failures check(s) failed"; exit 1; }

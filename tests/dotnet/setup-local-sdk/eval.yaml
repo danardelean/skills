@@ -390,9 +390,14 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "b46af4c7b075f0a7ea83deb10e0e79fc8a46ed3941caf7a0170034d5d739c61f  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "1d00d7c9feaf99bae01ab51c15568df0ace37240971df41bf1c08297333e61b7  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
+      - type: run-command
+        config:
+          command: echo "6bb9be6f74d7938b8bca04ef9ae354ace63cb23db38da8cbe6a9c01db84b70f8  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          expected_exit_code: 0
+          timeout: 1m
       - type: file-contains
         config:
           path: install*.sh
