@@ -64,12 +64,13 @@ function Get-NextStatement($node) {
     return $null
 }
 function Test-Guard($ifAst, $varName) {
-    # condition: the variable is non-zero (truthy, -ne 0, -gt 0, 0 -ne, -not (... -eq 0)); body: throw, or exit with a non-zero code
+    # condition: a genuine non-zero test of the variable (truthy, -ne 0, -gt 0, 0 -ne, 0 -lt, -not (... -eq 0)); -ge 0 is true on success
+    # body: throw, or exit with a literal non-zero code or with the tested variable itself
     $cond = (($ifAst.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ').Trim()
     $v = [regex]::Escape('$' + $varName)
-    $condOk = $cond -match ('^(' + $v + '|' + $v + '\s+-(ne|gt|ge)\s+0|0\s+-(ne|lt)\s+' + $v + '|(-not|!)\s*\(?\s*' + $v + '\s+-eq\s+0\s*\)?)$')
+    $condOk = $cond -match ('^(' + $v + '|' + $v + '\s+-(ne|gt)\s+0|0\s+-(ne|lt)\s+' + $v + '|(-not|!)\s*\(?\s*' + $v + '\s+-eq\s+0\s*\)?)$')
     $body = ($ifAst.Clauses | ForEach-Object { $_.Item2.Extent.Text }) -join ' '
-    $bodyOk = $body -match '\bthrow\b|\bexit\s+(\$\w+|[1-9]\d*)\b'
+    $bodyOk = $body -match ('\bthrow\b|\bexit\s+(' + $v + '|[1-9]\d*)\b')
     return ($condOk -and $bodyOk)
 }
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))

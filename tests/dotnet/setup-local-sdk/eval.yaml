@@ -401,7 +401,7 @@ stimuli:
           timeout: 2m
       - type: run-command
         config:
-          command: echo "9bf94b26e715fc789e1f5d71eb0628707e23fbad69f3b23534cc964418aa35dc  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "0a43db00d3f715ddbb69c1d2d85b84357ff20c5da21121dc0355d4297f294a53  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains
