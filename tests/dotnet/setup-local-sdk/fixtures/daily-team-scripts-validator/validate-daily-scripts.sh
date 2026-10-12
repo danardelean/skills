@@ -8,6 +8,9 @@
 #   5. when workload install fails, build servers are still shut down and the failure is propagated
 #   6. workload install receives the requested ids (the fake dotnet rejects a call without ios and android)
 #   7. the successful run leaves global.json with the SDK version and sdk.paths, and .dotnet/ in .gitignore
+#   8. dotnet-install is called with --channel 12.0.1xx --quality daily --install-dir .dotnet
+#   9. the workspace NuGet config is valid XML with active nuget.org, dotnet12, android and macios sources
+#  10. a wrong-band or wrong-lane workload is caught in any position of the list, not only the first
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 candidate="$(ls install*.sh 2>/dev/null | head -1)"
@@ -32,7 +35,16 @@ STUB
 # fake dotnet-install: creates <install-dir>/dotnet from the fake dotnet
 cat > "$stubs/fake-install.sh" <<'STUB'
 #!/usr/bin/env bash
-dir=".dotnet"; while [ $# -gt 0 ]; do case "$1" in --install-dir|-i) dir="$2"; shift ;; --install-dir=*) dir="${1#*=}" ;; esac; shift; done
+dir=""; channel=""; quality=""
+while [ $# -gt 0 ]; do case "$1" in
+  --install-dir|-i) dir="$2"; shift ;; --install-dir=*) dir="${1#*=}" ;;
+  --channel|-c) channel="$2"; shift ;; --channel=*) channel="${1#*=}" ;;
+  --quality|-q) quality="$2"; shift ;; --quality=*) quality="${1#*=}" ;;
+esac; shift; done
+d="${dir#./}"; d="${d%/}"
+if [ "$channel" != "$EXPECT_CHANNEL" ] || [ "$quality" != daily ] || [ "$d" != .dotnet ]; then
+  echo "fake dotnet-install: expected --channel $EXPECT_CHANNEL --quality daily --install-dir .dotnet, got channel='$channel' quality='$quality' install-dir='$dir'" >&2; exit 3
+fi
 mkdir -p "$dir" && cp "$FAKE_DOTNET_SRC" "$dir/dotnet" && chmod +x "$dir/dotnet"
 STUB
 # curl / wget stubs: serve the fake installer to -o/-O <file> or to stdout
@@ -47,8 +59,29 @@ out=""; while [ $# -gt 0 ]; do case "$1" in -O|--output-document) out="$2"; shif
 if [ -n "$out" ] && [ "$out" != "-" ]; then cp "$FAKE_INSTALL_SRC" "$out"; else cat "$FAKE_INSTALL_SRC"; fi
 STUB
 chmod +x "$stubs"/*
-export FAKE_DOTNET_SRC="$stubs/fake-dotnet" FAKE_INSTALL_SRC="$stubs/fake-install.sh" FAKE_INSTALL_EXIT=0
+export FAKE_DOTNET_SRC="$stubs/fake-dotnet" FAKE_INSTALL_SRC="$stubs/fake-install.sh" FAKE_INSTALL_EXIT=0 EXPECT_CHANNEL="12.0.1xx"
 failures=0
+# the NuGet config next to the scripts: valid XML, with the four sources active
+cfg=""; for f in NuGet.Config NuGet.config nuget.config; do if [ -f "$f" ]; then cfg="$f"; break; fi; done
+py="$(command -v python3 || command -v python || true)"
+if [ -z "$cfg" ]; then echo "FAIL  no NuGet config in the workspace"; failures=$((failures+1))
+elif [ -z "$py" ]; then echo "FAIL  python is needed to parse $cfg"; failures=$((failures+1))
+elif "$py" - "$cfg" <<'PY'
+import sys, xml.etree.ElementTree as ET
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+except ET.ParseError as exc:
+    print("not valid XML: %s" % exc); sys.exit(1)
+adds = {a.get("key", ""): a.get("value", "") for a in root.findall("./packageSources/add")}
+disabled = {d.get("key", "") for d in root.findall("./disabledPackageSources/add")}
+active = [v for k, v in adds.items() if k not in disabled]
+need = {"nuget.org": "api.nuget.org/v3/index.json", "dotnet12": "_packaging/dotnet12/", "android": "darc-pub-dotnet-android-", "macios": "darc-pub-dotnet-macios-"}
+missing = [name for name, frag in need.items() if not any(frag in v for v in active)]
+if missing:
+    print("no active source for: %s" % ", ".join(missing)); sys.exit(1)
+PY
+then echo "ok    $cfg has active nuget.org, dotnet12, android and macios sources"
+else echo "FAIL  $cfg: see above"; failures=$((failures+1)); fi
 run() { # name, sdk version, expected exit (0 or nonzero), config (yes/no), list lines...
   local name="$1" version="$2" expect="$3" config="$4"; shift 4
   local box="$root/$name"; mkdir -p "$box"; cp "$candidate" "$box/install.sh"
@@ -73,8 +106,10 @@ if [ -f "$root/alpha-right-band/calls.log" ]; then
   if [ -f "$root/alpha-right-band/.gitignore" ] && grep -qx '\.dotnet/' "$root/alpha-right-band/.gitignore"; then echo "ok    .gitignore excludes .dotnet/"; else echo "FAIL  .gitignore does not exclude .dotnet/"; failures=$((failures+1)); fi
 fi
 run alpha-stale-band "$V12" 1 yes "ios     26.5.12193-net11-rc.1/11.0.100-rc.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
+run alpha-stale-second "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.0.0-rc.1.2257/11.0.100-rc.1   SDK 12.0.100-alpha.1"
 run rc2-right-lane "$V11" 0 yes "ios     27.0.12212-net11-rc.2/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.2.0-rc.2.5/11.0.100-rc.2   SDK 11.0.100-rc.2"
 run rc2-main-lane "$V11" 1 yes "ios     27.1.11007-xcode27.1-net11.0/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.99.0-preview.1.4/11.0.100-rc.2   SDK 11.0.100-rc.2"
+run rc2-main-lane-second "$V11" 1 yes "ios     27.0.12212-net11-rc.2/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.99.0-preview.1.4/11.0.100-rc.2   SDK 11.0.100-rc.2"
 run no-config "$V12" 1 no "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 if [ -f "$root/no-config/calls.log" ] && grep -q '^workload install' "$root/no-config/calls.log"; then echo "FAIL  workload install ran without a NuGet config"; failures=$((failures+1)); else echo "ok    no workload install without a NuGet config"; fi
 FAKE_INSTALL_EXIT=1 run install-fails "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"

@@ -390,7 +390,7 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "1b4bc902fc5ed85ac3c781892bd35581c3ac4e4d082762e67a6321dac1cfe072  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "b46af4c7b075f0a7ea83deb10e0e79fc8a46ed3941caf7a0170034d5d739c61f  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: file-contains
