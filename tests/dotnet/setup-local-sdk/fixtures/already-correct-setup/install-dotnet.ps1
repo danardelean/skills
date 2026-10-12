@@ -51,11 +51,11 @@ if (-not (Test-Path .gitignore) -or -not (Select-String -Path .gitignore -Patter
 }
 if ($Workloads.Count -gt 0) {
     if ($quality -eq 'daily') {
-        # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
+        # a daily band has no manifests on nuget.org and no workload set; the messages below must stand alone in the team's repo
         $major = "$sdkVersion".Split('.')[0]
         $sources = & "$installDir\dotnet.exe" nuget list source --format Short  # the effective configuration: E enabled, D disabled
         if (-not ($sources | Select-String -Pattern "^E +\S*_packaging/dotnet$major/" -Quiet)) {
-            throw "Daily SDK: no enabled dotnet$major feed in the effective NuGet configuration; add it to NuGet.config with the darc-pub-* feeds of the workloads, see references/daily-builds.md."
+            throw "Daily SDK: no enabled dotnet$major feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun."
         }
         & "$installDir\dotnet.exe" workload config --update-mode manifests
         if ($LASTEXITCODE -ne 0) { throw "workload config --update-mode manifests failed with exit code $LASTEXITCODE" }
@@ -72,7 +72,7 @@ if ($Workloads.Count -gt 0) {
         foreach ($w in $Workloads) {
             $ver = $list | Where-Object { ($_ -split '\s+')[0] -eq $w } | ForEach-Object { ($_ -split '\s+')[1] } | Select-Object -First 1  # <manifest version>/<band>
             if (-not ($ver -and $ver.EndsWith("/$band") -and (-not $lane -or $ver.Split('/')[0] -match $lane))) {
-                $list | Write-Host; throw "workload ${w}: $(if ($ver) { $ver } else { 'missing' }) is not a $band build of the SDK's lane; see references/daily-builds.md."
+                $list | Write-Host; throw "workload ${w}: $(if ($ver) { $ver } else { 'missing' }) is not a $band build of the SDK's lane: the installer took a bundled or other-lane manifest. Place the band's <id>.Manifest-$band package under $installDir\sdk-manifests\$band\ by hand and rerun with workload install --skip-manifest-update."
             }
         }
     }
