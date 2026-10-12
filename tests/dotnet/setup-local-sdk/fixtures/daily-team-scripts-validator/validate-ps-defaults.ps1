@@ -2,9 +2,11 @@
 #   1. it parses
 #   2. it defaults the workload list to ios and android (the Workloads parameter default, or a constant
 #      assignment to $Workloads), so that running it without arguments installs both
-#   3. every native call whose failure must stop the script is followed by a $LASTEXITCODE check:
-#      the downloaded dotnet-install script, workload config, workload install, build-server shutdown
+#   3. every native call whose failure must stop the script is followed by a $LASTEXITCODE check that
+#      tests for failure (not an inverted condition) and throws or exits non-zero: the downloaded
+#      dotnet-install script, workload config, workload install, build-server shutdown
 #      ($ErrorActionPreference = 'Stop' does not make a native exit code terminating)
+#   4. the workload install call passes $Workloads, so the defaults reach the installer
 $ErrorActionPreference = 'Stop'
 $candidate = Get-ChildItem -Path . -File | Where-Object { $_.Name -like 'install*.ps1' } | Select-Object -First 1
 if (-not $candidate) { Write-Host 'FAIL  no install*.ps1 in the workspace'; exit 1 }
@@ -61,6 +63,15 @@ function Get-NextStatement($node) {
     }
     return $null
 }
+function Test-Guard($ifAst, $varName) {
+    # condition: the variable is non-zero (truthy, -ne 0, -gt 0, 0 -ne, -not (... -eq 0)); body: throw, or exit with a non-zero code
+    $cond = (($ifAst.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ').Trim()
+    $v = [regex]::Escape('$' + $varName)
+    $condOk = $cond -match ('^(' + $v + '|' + $v + '\s+-(ne|gt|ge)\s+0|0\s+-(ne|lt)\s+' + $v + '|(-not|!)\s*\(?\s*' + $v + '\s+-eq\s+0\s*\)?)$')
+    $body = ($ifAst.Clauses | ForEach-Object { $_.Item2.Extent.Text }) -join ' '
+    $bodyOk = $body -match '\bthrow\b|\bexit\s+(\$\w+|[1-9]\d*)\b'
+    return ($condOk -and $bodyOk)
+}
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
 $commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true))
 $required = @(
@@ -72,22 +83,22 @@ $required = @(
 foreach ($r in $required) {
     $cmd = $commands | Where-Object { $_.Extent.Text -match $r.pattern } | Select-Object -First 1
     if (-not $cmd) { Write-Host "FAIL  no $($r.name) call found"; $failures++; continue }
+    if ($r.name -eq 'workload install') {
+        $usesWorkloads = [bool]($cmd.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.VariableExpressionAst] -and $_.VariablePath.UserPath -eq 'Workloads' })
+        if ($usesWorkloads) { Write-Host 'ok    workload install receives $Workloads' } else { Write-Host "FAIL  workload install does not pass `$Workloads ($($cmd.Extent.Text))"; $failures++ }
+    }
     $nextStmt = Get-NextStatement $cmd
     $next = if ($nextStmt) { $nextStmt.Extent.Text } else { '' }
     $ok = $false
-    if ($next -match 'LASTEXITCODE') {
-        if ($next -match '^\s*\$(\w+)\s*=\s*\$LASTEXITCODE\s*$') {
-            # the guard must come after the capture and inside the block that holds it (an IfStatementAst keeps its conditions in Clauses[i].Item1)
-            $var = $Matches[1]
-            $block = $nextStmt.Parent
-            $ok = [bool]($ifs | Where-Object {
-                $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $_.Extent.EndOffset -le $block.Extent.EndOffset -and
-                (($_.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ') -match ('\$' + $var + '\b') -and $_.Extent.Text -match '\b(throw|exit)\b' })
-        } else {
-            $ok = ($next -match '\b(throw|exit)\b')
-        }
+    if ($nextStmt -is [System.Management.Automation.Language.IfStatementAst]) {
+        $ok = Test-Guard $nextStmt 'LASTEXITCODE'
+    } elseif ($next -match '^\s*\$(\w+)\s*=\s*\$LASTEXITCODE\s*$') {
+        # the guard must come after the capture and inside the block that holds it
+        $var = $Matches[1]
+        $block = $nextStmt.Parent
+        $ok = [bool]($ifs | Where-Object { $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $_.Extent.EndOffset -le $block.Extent.EndOffset -and (Test-Guard $_ $var) })
     }
-    if ($ok) { Write-Host "ok    $($r.name): exit code checked" } else { Write-Host "FAIL  $($r.name): the next statement does not check `$LASTEXITCODE and stop ($next)"; $failures++ }
+    if ($ok) { Write-Host "ok    $($r.name): failure stops the script" } else { Write-Host "FAIL  $($r.name): no guard that tests a non-zero exit code and throws or exits non-zero right after it ($next)"; $failures++ }
 }
 if ($failures -eq 0) { Write-Host 'all checks passed'; exit 0 }
 Write-Host "$failures check(s) failed"; exit 1

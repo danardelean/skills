@@ -222,7 +222,7 @@ stimuli:
           pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
       - type: output-not-matches
         config:
-          pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)[^.\n]{0,40}(?<!not )(?<!n''t )(?<!cannot )(?<!never )\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)[^.\n]{0,40}(?<!not )(?<!n''t )(?<!cannot )(?<!never )\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
+          pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|n''t|cannot|never|no|nor|neither)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|n''t|cannot|never|no|nor|neither)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
       - type: prompt
     rubric:
       - The agent explained that the missing 10.0.13 package is the previous major's servicing runtime that is not yet publicly available
@@ -401,7 +401,7 @@ stimuli:
           timeout: 2m
       - type: run-command
         config:
-          command: echo "450c8edcf05caccc4769d9a13dde865c6e0f2bec8eed8db87aec840e246f9240  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "9bf94b26e715fc789e1f5d71eb0628707e23fbad69f3b23534cc964418aa35dc  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains
