@@ -53,9 +53,9 @@ if ($Workloads.Count -gt 0) {
     if ($quality -eq 'daily') {
         # a daily band has no manifests on nuget.org and no workload set: see references/daily-builds.md
         $major = "$sdkVersion".Split('.')[0]
-        $cfg = @('NuGet.Config', 'NuGet.config', 'nuget.config') | Where-Object { Test-Path $_ } | Select-Object -First 1  # spellings NuGet reads on a case-sensitive file system
-        if (-not $cfg -or -not (Select-String -Path $cfg -Pattern "_packaging/dotnet$major/" -SimpleMatch -Quiet)) {
-            throw "Daily SDK: NuGet.config must list the dotnet$major feed (and the darc-pub-* feeds of the workloads) before installing workloads; see references/daily-builds.md."
+        $sources = & "$installDir\dotnet.exe" nuget list source --format Short  # the effective configuration: E enabled, D disabled
+        if (-not ($sources | Select-String -Pattern "^E +\S*_packaging/dotnet$major/" -Quiet)) {
+            throw "Daily SDK: no enabled dotnet$major feed in the effective NuGet configuration; add it to NuGet.config with the darc-pub-* feeds of the workloads, see references/daily-builds.md."
         }
         & "$installDir\dotnet.exe" workload config --update-mode manifests
         if ($LASTEXITCODE -ne 0) { throw "workload config --update-mode manifests failed with exit code $LASTEXITCODE" }

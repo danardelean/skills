@@ -49,11 +49,14 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
    it never writes mappings: when the file has a `<packageSourceMapping>` section, add a
    `<packageSource key="<name>">` entry for each new source by hand, or restores that use mappings
    never look at it. Scope each entry to what the feed serves, never a catch-all `*`, which would
-   make every dependency eligible from every feed: `Microsoft.NETCore.App.*`,
-   `Microsoft.AspNetCore.App.*`, `Microsoft.NET.Sdk.*`, `Microsoft.NET.Workload.*`,
-   `Microsoft.NET.Runtime.*`, `Microsoft.NET.ILLink.*` and `Microsoft.Maui.*` for `dotnet<major>`;
-   `Microsoft.Android.*` for the android feeds; `Microsoft.iOS.*`, `Microsoft.MacCatalyst.*`,
-   `Microsoft.macOS.*` and `Microsoft.tvOS.*` for the macios feeds. The file is `NuGet.Config`,
+   make every dependency eligible from every feed. For `dotnet<major>`, the families a daily
+   restore pulls: `Microsoft.NETCore.App.*`, `Microsoft.AspNetCore.App.*`,
+   `Microsoft.WindowsDesktop.App.*`, `Microsoft.NETCore.DotNetAppHost*`,
+   `Microsoft.NETCore.DotNetHost*`, `Microsoft.NET.Sdk.*`, `Microsoft.NET.Workload.*`,
+   `Microsoft.NET.Runtime.*`, `Microsoft.NET.ILLink.*`, `Microsoft.DotNet.ILCompiler*`,
+   `runtime.*` (the RID-specific runtime and ILCompiler packs) and `Microsoft.Maui.*`. For the
+   android feeds, `Microsoft.Android.*`; for the macios feeds, `Microsoft.iOS.*`,
+   `Microsoft.MacCatalyst.*`, `Microsoft.macOS.*` and `Microsoft.tvOS.*`. The file is `NuGet.Config`,
    `NuGet.config` or `nuget.config`, whichever the repository has, since NuGet reads all three on a
    case-sensitive file system. Only create the standalone file below, with its `<clear />`, when
    the repository has none. Sources: the `dotnet<major>`
