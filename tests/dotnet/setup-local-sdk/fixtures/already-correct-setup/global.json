@@ -2,7 +2,7 @@
   "sdk": {
     "version": "11.0.100-rc.1.26425.128",
     "allowPrerelease": true,
-    "rollForward": "latestFeature",
+    "rollForward": "disable",
     "paths": [".dotnet", "$host$"],
     "errorMessage": "Required .NET SDK not found. Run ./install-dotnet.sh (or .ps1) to install it locally."
   }

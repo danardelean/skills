@@ -3,7 +3,7 @@ set -euo pipefail
 INSTALL_DIR=".dotnet"
 CHANNEL="11.0"
 QUALITY="preview"
-VERSION=""
+VERSION="11.0.100-rc.1.26425.128"
 ROLL_FORWARD="latestFeature"
 ALLOW_PRERELEASE="true"
 WORKLOADS=(); [ $# -eq 0 ] || WORKLOADS=("$@")  # "$@" alone is unbound under set -u in bash 3.2 (macOS)
@@ -72,12 +72,14 @@ EOF
 }
 write_global_json
 grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitignore
+if [ "$QUALITY" = "daily" ]; then
+    # a daily's runtime and reference packs are not on nuget.org: every restore needs the feed, workloads or not; the messages must stand alone in the team's repo
+    "$INSTALL_DIR/dotnet" nuget list source --format Short 2>/dev/null | grep -Eq "^E +[^ ]*_packaging/dotnet${SDK_VERSION%%.*}/" \
+        || { echo "Daily SDK: no enabled dotnet${SDK_VERSION%%.*} feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun." >&2; exit 1; }
+fi
 if [ ${#WORKLOADS[@]} -gt 0 ]; then
     if [ "$QUALITY" = "daily" ]; then
-        # a daily band has no manifests on nuget.org and no workload set; the messages below must stand alone in the team's repo
-        "$INSTALL_DIR/dotnet" nuget list source --format Short 2>/dev/null | grep -Eq "^E +[^ ]*_packaging/dotnet${SDK_VERSION%%.*}/" \
-            || { echo "Daily SDK: no enabled dotnet${SDK_VERSION%%.*} feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun." >&2; exit 1; }
-        "$INSTALL_DIR/dotnet" workload config --update-mode manifests
+        "$INSTALL_DIR/dotnet" workload config --update-mode manifests  # a daily band has no manifests on nuget.org and no workload set
     fi
     rc=0; "$INSTALL_DIR/dotnet" workload install "${WORKLOADS[@]}" || rc=$?
     if [ "$QUALITY" = "daily" ]; then
@@ -91,7 +93,7 @@ if [ ${#WORKLOADS[@]} -gt 0 ]; then
         for w in "${WORKLOADS[@]}"; do
             ver="$(printf '%s\n' "$LIST" | awk -v w="$w" '$1 == w { print $2 }')"  # <manifest version>/<band>
             case "$ver" in */"$BAND") [ -z "$LANE" ] || echo "${ver%%/*}" | grep -Eq "$LANE" ;; *) false ;; esac \
-                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: ${ver:-missing} is not a ${BAND} build of the SDK's lane: the installer took a bundled or other-lane manifest. Place the band's <id>.Manifest-${BAND} package under $INSTALL_DIR/sdk-manifests/${BAND}/ by hand and rerun with workload install --skip-manifest-update." >&2; exit 1; }
+                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: ${ver:-missing} is not a ${BAND} build of the SDK's lane: the installer took a bundled or other-lane manifest. Extract the data/ folder of the right <id>.Manifest-${BAND} package into $INSTALL_DIR/sdk-manifests/${BAND}/<id>/<version>/, delete the other version folders of that id and $INSTALL_DIR/metadata/workloads/*/${BAND}/InstallState/default.json, then rerun with workload install --skip-manifest-update." >&2; exit 1; }
         done
     fi
     [ "$rc" -eq 0 ] || exit "$rc"
