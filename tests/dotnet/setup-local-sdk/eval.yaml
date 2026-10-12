@@ -390,12 +390,12 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "1d00d7c9feaf99bae01ab51c15568df0ace37240971df41bf1c08297333e61b7  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "51abb418df7bb026bc90ea2c2bea6d0a38db9d6e423c9348ed3c9271bd025ad5  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: run-command
         config:
-          command: echo "6bb9be6f74d7938b8bca04ef9ae354ace63cb23db38da8cbe6a9c01db84b70f8  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "97c4d7e8188e3d291a4434ef2819801d84f37e7b0aef8534da8da88fe8223910  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains
@@ -558,7 +558,7 @@ stimuli:
           timeout: 1m
       - type: output-not-matches
         config:
-          pattern: '(export\s+PATH|setx\s+PATH|\$env:PATH\s*=|dotnet-install: (Downloading|Extracting)|Installation finished successfully)'
+          pattern: '(?m)(^\s*(export\s+PATH=|setx\s+PATH\s|\$env:PATH\s*=)|dotnet-install: (Downloading|Extracting)|Installation finished successfully)'
       - type: prompt
     rubric:
       - Determined that global.json, .gitignore and both scripts already form a complete project-local SDK setup

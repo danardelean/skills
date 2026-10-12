@@ -12,6 +12,7 @@
 #   9. the workspace NuGet config is valid XML with active nuget.org, dotnet12, android and macios sources
 #  10. a wrong-band or wrong-lane workload is caught in any position of the list, not only the first
 #  11. run without arguments, the script installs ios and android by default
+#  12. a NuGet config that exists but lacks the dotnet feed stops the script before workload install
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 candidate="$(ls install*.sh 2>/dev/null | head -1)"
@@ -84,12 +85,13 @@ if missing:
 PY
 then echo "ok    $cfg has active nuget.org, dotnet12, android and macios sources"
 else echo "FAIL  $cfg: see above"; failures=$((failures+1)); fi
-run() { # name, sdk version, expected exit (0 or nonzero), config (yes/no), list lines...
+run() { # name, sdk version, expected exit (0 or nonzero), config (yes / no / nofeed), list lines...
   local name="$1" version="$2" expect="$3" config="$4"; shift 4
   local box="$root/$name"; mkdir -p "$box"; cp "$candidate" "$box/install.sh"
   export FAKE_LOG="$box/calls.log" FAKE_SDK_VERSION="$version" FAKE_LIST="$box/list.txt"
   : > "$FAKE_LOG"; { printf 'Installed Workload Id   Manifest Versions   Installation Source\n---\n'; printf '%s\n' "$@"; } > "$FAKE_LIST"
   [ "$config" = yes ] && printf '<configuration><packageSources><add key="dotnet11" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet11/nuget/v3/index.json" /><add key="dotnet12" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet12/nuget/v3/index.json" /></packageSources></configuration>' > "$box/NuGet.config"
+  [ "$config" = nofeed ] && printf '<configuration><packageSources><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>' > "$box/NuGet.config"
   # shellcheck disable=SC2086
   local rc=0; ( cd "$box" && PATH="$stubs:$PATH" bash ./install.sh $RUN_ARGS ) > "$box/out.txt" 2>&1 || rc=$?
   if [ "$expect" = 0 ] && [ "$rc" -ne 0 ]; then echo "FAIL  $name: exited $rc, expected success"; sed 's/^/      /' "$box/out.txt" | tail -5; failures=$((failures+1)); return; fi
@@ -115,6 +117,8 @@ run rc2-main-lane "$V11" 1 yes "ios     27.1.11007-xcode27.1-net11.0/11.0.100-rc
 run rc2-main-lane-second "$V11" 1 yes "ios     27.0.12212-net11-rc.2/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.99.0-preview.1.4/11.0.100-rc.2   SDK 11.0.100-rc.2"
 run no-config "$V12" 1 no "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 if [ -f "$root/no-config/calls.log" ] && grep -q '^workload install' "$root/no-config/calls.log"; then echo "FAIL  workload install ran without a NuGet config"; failures=$((failures+1)); else echo "ok    no workload install without a NuGet config"; fi
+run config-without-feed "$V12" 1 nofeed "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
+if [ -f "$root/config-without-feed/calls.log" ] && grep -q '^workload install' "$root/config-without-feed/calls.log"; then echo "FAIL  workload install ran with a NuGet config that lacks the dotnet12 feed"; failures=$((failures+1)); else echo "ok    no workload install when the NuGet config lacks the dotnet12 feed"; fi
 RUN_ARGS="" run alpha-no-args "$V12" 0 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 if [ -f "$root/alpha-no-args/calls.log" ] && grep -q '^workload install' "$root/alpha-no-args/calls.log"; then echo "ok    no arguments: workload install ran with the default ids"; else echo "FAIL  no arguments: workload install did not run (no default workloads)"; failures=$((failures+1)); fi
 FAKE_INSTALL_EXIT=1 run install-fails "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
