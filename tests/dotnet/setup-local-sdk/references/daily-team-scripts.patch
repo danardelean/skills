@@ -20,7 +20,7 @@ index 0000000..90c9f2a
 +</configuration>
 diff --git a/install-dotnet.ps1 b/install-dotnet.ps1
 new file mode 100644
-index 0000000..123821a
+index 0000000..b947fc3
 --- /dev/null
 +++ b/install-dotnet.ps1
 @@ -0,0 +1,81 @@
@@ -39,7 +39,7 @@ index 0000000..123821a
 +    } else {
 +        $installArgs += @('-Channel', $channel, '-Quality', $quality)
 +    }
-+    & $installScript @installArgs
++    & $installScript @installArgs; if ($LASTEXITCODE) { throw "dotnet-install failed with exit code $LASTEXITCODE" }  # a child script's exit code is not terminating
 +}
 +finally {
 +    if (Test-Path -LiteralPath $installScript) {

@@ -105,7 +105,8 @@ if [ -f "$root/alpha-right-band/calls.log" ]; then
   cfg=$(grep -n '^workload config --update-mode manifests' "$root/alpha-right-band/calls.log" | head -1 | cut -d: -f1)
   ins=$(grep -n '^workload install' "$root/alpha-right-band/calls.log" | head -1 | cut -d: -f1)
   if [ -z "$cfg" ] || [ -z "$ins" ] || [ "$cfg" -gt "$ins" ]; then echo "FAIL  manifests update mode is not switched on before workload install"; failures=$((failures+1)); else echo "ok    manifests update mode before workload install"; fi
-  grep -q '^build-server shutdown' "$root/alpha-right-band/calls.log" && echo "ok    build-server shutdown" || { echo "FAIL  build-server shutdown not called"; failures=$((failures+1)); }
+  sd=$(grep -n '^build-server shutdown' "$root/alpha-right-band/calls.log" | tail -1 | cut -d: -f1)
+  if [ -n "$sd" ] && [ -n "$ins" ] && [ "$sd" -gt "$ins" ]; then echo "ok    build-server shutdown after workload install"; else echo "FAIL  build-server shutdown missing or not after workload install"; failures=$((failures+1)); fi
   gj="$root/alpha-right-band/global.json"
   if [ -f "$gj" ] && grep -q '"paths"' "$gj" && grep -qF '.dotnet' "$gj" && grep -qF '$host$' "$gj" && grep -qF "$V12" "$gj"; then echo "ok    global.json pins $V12 with sdk.paths"; else echo "FAIL  global.json missing, or without the SDK version, \"paths\", .dotnet and \$host\$"; failures=$((failures+1)); fi
   if [ -f "$root/alpha-right-band/.gitignore" ] && grep -qx '\.dotnet/' "$root/alpha-right-band/.gitignore"; then echo "ok    .gitignore excludes .dotnet/"; else echo "FAIL  .gitignore does not exclude .dotnet/"; failures=$((failures+1)); fi
@@ -122,5 +123,6 @@ if [ -f "$root/config-without-feed/calls.log" ] && grep -q '^workload install' "
 RUN_ARGS="" run alpha-no-args "$V12" 0 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 if [ -f "$root/alpha-no-args/calls.log" ] && grep -q '^workload install' "$root/alpha-no-args/calls.log"; then echo "ok    no arguments: workload install ran with the default ids"; else echo "FAIL  no arguments: workload install did not run (no default workloads)"; failures=$((failures+1)); fi
 FAKE_INSTALL_EXIT=1 run install-fails "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
-if [ -f "$root/install-fails/calls.log" ] && grep -q '^build-server shutdown' "$root/install-fails/calls.log"; then echo "ok    build-server shutdown after a failed install"; else echo "FAIL  build-server shutdown not called after a failed install"; failures=$((failures+1)); fi
+ins2=$(grep -n '^workload install' "$root/install-fails/calls.log" 2>/dev/null | head -1 | cut -d: -f1); sd2=$(grep -n '^build-server shutdown' "$root/install-fails/calls.log" 2>/dev/null | tail -1 | cut -d: -f1)
+if [ -n "$sd2" ] && [ -n "$ins2" ] && [ "$sd2" -gt "$ins2" ]; then echo "ok    build-server shutdown after a failed install"; else echo "FAIL  build-server shutdown missing or not after the failed install"; failures=$((failures+1)); fi
 [ "$failures" -eq 0 ] && echo "all checks passed" || { echo "$failures check(s) failed"; exit 1; }

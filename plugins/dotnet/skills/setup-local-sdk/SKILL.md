@@ -358,7 +358,7 @@ try {
     } else {
         $installArgs += @('-Channel', $channel, '-Quality', $quality)
     }
-    & $installScript @installArgs
+    & $installScript @installArgs; if ($LASTEXITCODE) { throw "dotnet-install failed with exit code $LASTEXITCODE" }  # a child script's exit code is not terminating
 }
 finally {
     if (Test-Path -LiteralPath $installScript) {

@@ -107,8 +107,11 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
    `workload update` picked Android `37.99.0-preview.1.4` (a `main` build) over the band's
    `37.2.0-rc.2.x`, and an iOS `27.1.…-xcode27.1-net11.0` build over `27.0.12212-net11-rc.2`.
    If the wrong lane won, place the manifest by hand: download the `<id>.Manifest-<band>` package of
-   the right build, extract its `data/` folder into `.dotnet/sdk-manifests/<band>/<id>/<version>/`
-   (one version folder per id), and install with `--skip-manifest-update`.
+   the right build and extract its `data/` folder into `.dotnet/sdk-manifests/<band>/<id>/<version>/`.
+   Then delete the other version folders of that id, the wrong-lane one included: the resolver takes
+   the highest version folder, so a higher wrong-lane folder left in place wins again. Delete
+   `.dotnet/metadata/workloads/<architecture>/<band>/InstallState/default.json` too if it exists, since
+   it pins manifest versions, and install with `--skip-manifest-update`.
 
 5. **Build servers.** After manifests or packs changed, run `./.dotnet/dotnet build-server shutdown`.
    MSBuild nodes and the compiler server outlive a build and keep the manifests they loaded; the next
