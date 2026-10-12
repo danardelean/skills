@@ -47,15 +47,19 @@ if ($found) { Write-Host "ok    $($candidate.Name) defaults `$Workloads to ios a
 else { Write-Host "FAIL  $($candidate.Name): neither the Workloads parameter default nor an assignment to `$Workloads holds both ios and android"; $failures++ }
 # 3. failure propagation: the statement right after each native call must look at $LASTEXITCODE, either
 #    `if ($LASTEXITCODE ...) { throw/exit }` or `$x = $LASTEXITCODE` with a later `if (... $x ...) { throw/exit }`
-function Get-NextStatementText($node) {
+function Get-EnclosingStatement($node) {
     $stmt = $node
     while ($stmt -and -not (($stmt.Parent -is [System.Management.Automation.Language.StatementBlockAst]) -or ($stmt.Parent -is [System.Management.Automation.Language.NamedBlockAst]))) { $stmt = $stmt.Parent }
-    if (-not $stmt) { return '' }
+    return $stmt
+}
+function Get-NextStatement($node) {
+    $stmt = Get-EnclosingStatement $node
+    if (-not $stmt) { return $null }
     $siblings = @($stmt.Parent.Statements)
     for ($i = 0; $i -lt $siblings.Count; $i++) {
-        if ([object]::ReferenceEquals($siblings[$i], $stmt)) { if ($i + 1 -lt $siblings.Count) { return $siblings[$i + 1].Extent.Text } else { return '' } }
+        if ([object]::ReferenceEquals($siblings[$i], $stmt)) { if ($i + 1 -lt $siblings.Count) { return $siblings[$i + 1] } else { return $null } }
     }
-    return ''
+    return $null
 }
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
 $commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true))
@@ -68,13 +72,17 @@ $required = @(
 foreach ($r in $required) {
     $cmd = $commands | Where-Object { $_.Extent.Text -match $r.pattern } | Select-Object -First 1
     if (-not $cmd) { Write-Host "FAIL  no $($r.name) call found"; $failures++; continue }
-    $next = Get-NextStatementText $cmd
+    $nextStmt = Get-NextStatement $cmd
+    $next = if ($nextStmt) { $nextStmt.Extent.Text } else { '' }
     $ok = $false
     if ($next -match 'LASTEXITCODE') {
         if ($next -match '^\s*\$(\w+)\s*=\s*\$LASTEXITCODE\s*$') {
+            # the guard must come after the capture and inside the block that holds it (an IfStatementAst keeps its conditions in Clauses[i].Item1)
             $var = $Matches[1]
-            # an IfStatementAst keeps its conditions in Clauses[i].Item1
-            $ok = [bool]($ifs | Where-Object { (($_.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ') -match ('\$' + $var + '\b') -and $_.Extent.Text -match '\b(throw|exit)\b' })
+            $block = $nextStmt.Parent
+            $ok = [bool]($ifs | Where-Object {
+                $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $_.Extent.EndOffset -le $block.Extent.EndOffset -and
+                (($_.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ') -match ('\$' + $var + '\b') -and $_.Extent.Text -match '\b(throw|exit)\b' })
         } else {
             $ok = ($next -match '\b(throw|exit)\b')
         }

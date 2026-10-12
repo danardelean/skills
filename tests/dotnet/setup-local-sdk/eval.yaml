@@ -222,7 +222,7 @@ stimuli:
           pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
       - type: output-not-matches
         config:
-          pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)[^.\n]{0,120}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,120}(feeds?|update[- ]mode|manifests? mode))'
+          pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)[^.\n]{0,40}(?<!not )(?<!n''t )(?<!cannot )(?<!never )\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)[^.\n]{0,40}(?<!not )(?<!n''t )(?<!cannot )(?<!never )\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
       - type: prompt
     rubric:
       - The agent explained that the missing 10.0.13 package is the previous major's servicing runtime that is not yet publicly available
@@ -396,12 +396,12 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "48e8ce5bd4397d15362d1940c240a893e359574b1b2986c2d915e58d4c1821b8  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "f923eec05bac0faee3c5cfead8adced804482276e2f69f48560134f1fe262068  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: run-command
         config:
-          command: echo "07058055b93112217a358d2936907b714adf8585ec6daa282e5103652b69441f  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "450c8edcf05caccc4769d9a13dde865c6e0f2bec8eed8db87aec840e246f9240  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains

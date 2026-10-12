@@ -13,6 +13,7 @@
 #  10. a wrong-band or wrong-lane workload is caught in any position of the list, not only the first
 #  11. run without arguments, the script installs ios and android by default
 #  12. a NuGet config without an enabled dotnet feed (absent, commented out or disabled) stops the script before workload install
+#  13. a failing workload config stops the script before workload install; a failing build-server shutdown fails the script
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 candidate="$(ls install*.sh 2>/dev/null | head -1)"
@@ -26,8 +27,10 @@ echo "$*" >> "$FAKE_LOG"
 case "${1:-}" in
   --version) echo "$FAKE_SDK_VERSION" ;;
   nuget) [ "${2:-}" = list ] && cat "$FAKE_SOURCES" ;;
+  build-server) exit "${FAKE_SHUTDOWN_EXIT:-0}" ;;
   workload) case "${2:-}" in
     list) cat "$FAKE_LIST" ;;
+    config) exit "${FAKE_CONFIG_EXIT:-0}" ;;
     install) shift 2; case " $* " in *" ios "*) ;; *) echo "fake dotnet: workload install without ios: $*" >&2; exit 2 ;; esac
              case " $* " in *" android "*) ;; *) echo "fake dotnet: workload install without android: $*" >&2; exit 2 ;; esac
              exit "${FAKE_INSTALL_EXIT:-0}" ;;
@@ -62,7 +65,7 @@ out=""; while [ $# -gt 0 ]; do case "$1" in -O|--output-document) out="$2"; shif
 if [ -n "$out" ] && [ "$out" != "-" ]; then cp "$FAKE_INSTALL_SRC" "$out"; else cat "$FAKE_INSTALL_SRC"; fi
 STUB
 chmod +x "$stubs"/*
-export FAKE_DOTNET_SRC="$stubs/fake-dotnet" FAKE_INSTALL_SRC="$stubs/fake-install.sh" FAKE_INSTALL_EXIT=0 EXPECT_CHANNEL="12.0.1xx"
+export FAKE_DOTNET_SRC="$stubs/fake-dotnet" FAKE_INSTALL_SRC="$stubs/fake-install.sh" FAKE_INSTALL_EXIT=0 FAKE_CONFIG_EXIT=0 FAKE_SHUTDOWN_EXIT=0 EXPECT_CHANNEL="12.0.1xx"
 RUN_ARGS="ios android"  # arguments passed to the candidate; empty for the no-argument default case
 failures=0
 # the NuGet config next to the scripts: valid XML, with the four sources active
@@ -135,4 +138,7 @@ if [ -f "$root/alpha-no-args/calls.log" ] && grep -q '^workload install' "$root/
 FAKE_INSTALL_EXIT=1 run install-fails "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 ins2=$(grep -n '^workload install' "$root/install-fails/calls.log" 2>/dev/null | head -1 | cut -d: -f1); sd2=$(grep -n '^build-server shutdown' "$root/install-fails/calls.log" 2>/dev/null | tail -1 | cut -d: -f1)
 if [ -n "$sd2" ] && [ -n "$ins2" ] && [ "$sd2" -gt "$ins2" ]; then echo "ok    build-server shutdown after a failed install"; else echo "FAIL  build-server shutdown missing or not after the failed install"; failures=$((failures+1)); fi
+FAKE_CONFIG_EXIT=1 run config-fails "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
+if [ -f "$root/config-fails/calls.log" ] && grep -q '^workload install' "$root/config-fails/calls.log"; then echo "FAIL  workload install ran after workload config failed"; failures=$((failures+1)); else echo "ok    no workload install after a failed workload config"; fi
+FAKE_SHUTDOWN_EXIT=1 run shutdown-fails "$V12" 1 yes "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 [ "$failures" -eq 0 ] && echo "all checks passed" || { echo "$failures check(s) failed"; exit 1; }
