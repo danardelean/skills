@@ -87,9 +87,10 @@ function Test-Guard($ifAst, $varName) {
     # another condition, loop, try, script block or function do not count
     $bodyOk = $false
     foreach ($blk in ($ifAst.Clauses | ForEach-Object { $_.Item2 })) {
-        $first = @($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ThrowStatementAst] -or $args[0] -is [System.Management.Automation.Language.ExitStatementAst] -or $args[0] -is [System.Management.Automation.Language.ReturnStatementAst] }, $true) |
-            Where-Object { Test-DirectPath $_ $blk } | Sort-Object { $_.Extent.StartOffset } | Select-Object -First 1)
-        if (-not $first) { continue }
+        $terminators = @($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ThrowStatementAst] -or $args[0] -is [System.Management.Automation.Language.ExitStatementAst] -or $args[0] -is [System.Management.Automation.Language.ReturnStatementAst] }, $true) |
+            Where-Object { Test-DirectPath $_ $blk } | Sort-Object { $_.Extent.StartOffset })
+        if ($terminators.Count -eq 0) { continue }
+        $first = $terminators[0]
         if ($first -is [System.Management.Automation.Language.ThrowStatementAst]) { $bodyOk = $true; continue }
         if ($first -is [System.Management.Automation.Language.ExitStatementAst] -and $first.Pipeline) {
             $expr = $first.Pipeline.GetPureExpression()
