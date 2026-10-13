@@ -222,7 +222,7 @@ stimuli:
           pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
       - type: output-not-matches
         config:
-          pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient|won''t)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient|won''t)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
+          pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|\w+n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|\w+n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
       - type: prompt
     rubric:
       - The agent explained that the missing 10.0.13 package is the previous major's servicing runtime that is not yet publicly available
@@ -396,7 +396,7 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "9cd6fe6f9138547e2d6b2f154ae91e0dc9d566f58411c95158699f65596aede1  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "e23faf1712e30425d14d0f55eac97bf54d8609f819ae8889cf981d4e3e6fd756  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: run-command

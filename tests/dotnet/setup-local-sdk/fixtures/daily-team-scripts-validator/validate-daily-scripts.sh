@@ -9,7 +9,8 @@
 #   6. workload install receives the requested ids (the fake dotnet rejects a call without ios and android)
 #   7. the successful run leaves global.json with the SDK version and sdk.paths, and .dotnet/ in .gitignore
 #   8. dotnet-install is called with --channel 12.0.1xx --quality daily --install-dir .dotnet
-#   9. the workspace NuGet config is valid XML with active nuget.org, dotnet12, android and macios sources
+#   9. the workspace NuGet config is valid XML that clears inherited sources and has active nuget.org, dotnet12,
+#      android and macios sources with the exact nuget.org and dnceng URL shapes
 #  10. a wrong-band or wrong-lane workload is caught in any position of the list, not only the first
 #  11. run without arguments, the script installs ios and android by default
 #  12. a NuGet config without an enabled dotnet feed (absent, commented out, disabled, or a look-alike URL on another host) stops the script before workload install
@@ -79,6 +80,8 @@ try:
     root = ET.parse(sys.argv[1]).getroot()
 except ET.ParseError as exc:
     print("not valid XML: %s" % exc); sys.exit(1)
+if root.find("./packageSources/clear") is None:
+    print("no <clear /> under <packageSources>: user-level feeds would be inherited and the setup is not reproducible"); sys.exit(1)
 adds = {a.get("key", ""): a.get("value", "") for a in root.findall("./packageSources/add")}
 disabled = {d.get("key", "") for d in root.findall("./disabledPackageSources/add")}
 active = [v for k, v in adds.items() if k not in disabled]
