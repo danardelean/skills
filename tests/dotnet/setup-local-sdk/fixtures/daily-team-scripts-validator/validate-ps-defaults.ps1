@@ -9,7 +9,8 @@
 #   4. the workload install call passes $Workloads, so the defaults reach the installer
 #   5. the native calls target the downloaded installer script and the local .dotnet SDK, not the system dotnet;
 #      a failed workload install still shuts the build servers down before the failure is acted on
-#   6. the calls sit on a reachable path: code under a constant-false condition or inside a function definition does not count
+#   6. the calls and the guards sit on a reachable path: code under a constant-false condition or inside a function definition does not count
+#   7. the local dotnet is the project-local one: the path names .dotnet, or a variable assigned the constant '.dotnet'
 $ErrorActionPreference = 'Stop'
 $candidate = Get-ChildItem -Path . -File | Where-Object { $_.Name -like 'install*.ps1' } | Select-Object -First 1
 if (-not $candidate) { Write-Host 'FAIL  no install*.ps1 in the workspace'; exit 1 }
@@ -134,18 +135,33 @@ function Test-Reachable($node) {
     }
     return $true
 }
+function Test-LocalPathText($text) {
+    # a path is project-local when it names .dotnet literally, or through a variable that is assigned the constant '.dotnet' (./.dotnet, .\.dotnet)
+    if ($text -match '(^|[\\/"'' ])\.dotnet([\\/"'']|$)') { return $true }
+    foreach ($m in [regex]::Matches($text, '\$\{?(\w+)\}?')) {
+        $var = $m.Groups[1].Value
+        foreach ($as in $allAssignments) {
+            if ((Get-VariableName $as.Left) -ne $var) { continue }
+            $right = $as.Right; if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
+            $val = $null; try { $val = $right.SafeGetValue() } catch { }
+            if ($val -is [string] -and $val -match '^(\./|\.\\)?\.dotnet[\\/]?$') { return $true }
+        }
+    }
+    return $false
+}
 function Get-NativeArguments($cmd) {
-    # only a real invocation counts: `& <downloaded installer variable> ...` or `& <local .dotnet ... dotnet(.exe)> ...`;
-    # `Write-Host 'workload config'`, `& 'dotnet' ...` (the system SDK) and `& $other @installArgs` return $null
+    # only a real invocation counts: `& <downloaded installer variable> ...` or `& <dotnet(.exe) under the project-local .dotnet> ...`;
+    # `Write-Host 'workload config'`, `& 'dotnet' ...` (the system SDK), `& "$installDir\dotnet.exe"` with $installDir = '/usr/share/dotnet'
+    # and `& $other @installArgs` return $null
     if ($cmd.InvocationOperator -ne [System.Management.Automation.Language.TokenKind]::Ampersand) { return $null }
     $first = $cmd.CommandElements[0]
     $isInstaller = $first -is [System.Management.Automation.Language.VariableExpressionAst] -and $downloaded -and $first.VariablePath.UserPath -eq $downloaded
     $isLocalDotnet = ($first -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or $first -is [System.Management.Automation.Language.StringConstantExpressionAst]) -and
-        $first.Extent.Text -match 'dotnet(\.exe)?["'']?$' -and $first.Extent.Text -match '\$installDir|\.dotnet'
+        $first.Extent.Text -match 'dotnet(\.exe)?["'']?$' -and (Test-LocalPathText $first.Extent.Text)
     if (-not $isLocalDotnet -and -not $isInstaller -and $first -is [System.Management.Automation.Language.VariableExpressionAst]) {
         # `$dotnet = Join-Path $installDir 'dotnet.exe'; & $dotnet ...`: a variable assigned a dotnet path under the local SDK counts too
         $name = $first.VariablePath.UserPath
-        $isLocalDotnet = [bool]($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and $_.Right.Extent.Text -match 'dotnet' -and $_.Right.Extent.Text -match '\$installDir|\.dotnet' })
+        $isLocalDotnet = [bool]($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and $_.Right.Extent.Text -match 'dotnet' -and (Test-LocalPathText $_.Right.Extent.Text) })
     }
     if (-not ($isInstaller -or $isLocalDotnet)) { return $null }
     return (@($cmd.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join ' ')
@@ -183,7 +199,7 @@ foreach ($r in $required) {
         $writes = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) | Where-Object { (Get-VariableName $_.Left) -eq $var -and $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset })
         $guardAst = $ifs | Where-Object {
             $guard = $_
-            $guard.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $guard.Extent.EndOffset -le $block.Extent.EndOffset -and (Test-Guard $guard $var) -and
+            $guard.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $guard.Extent.EndOffset -le $block.Extent.EndOffset -and (Test-Guard $guard $var) -and (Test-Reachable $guard) -and
             -not ($writes | Where-Object { $_.Extent.StartOffset -lt $guard.Extent.StartOffset }) } | Select-Object -First 1
         $ok = [bool]$guardAst
         if ($ok -and $r.name -eq 'workload install') {

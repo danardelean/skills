@@ -216,10 +216,13 @@ stimuli:
           pattern: '(update-mode|workload set|manifests)'
       - type: output-matches
         config:
-          pattern: '(?i)((?:^|[.;:!?\n])(?:(?!\b(not|\w+n''t|\w+n’t|never|no|without|rather than|instead of|avoid|unnecessary|needless)\b)[^.;:!?\n]){0,160}\bwait(ing)?\b[\s\S]{0,120}(publish|public|Patch Tuesday|10\.0\.13|nuget\.org|\buntil\b[\s\S]{0,60}(published|public|released))|(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests)[\s\S]{0,400}--skip-manifest-update|--skip-manifest-update[\s\S]{0,400}(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests))'
+          pattern: '(?i)(\bwait(ing)?\b[\s\S]{0,120}(publish|public|Patch Tuesday|10\.0\.13|nuget\.org|\buntil\b[\s\S]{0,60}(published|public|released))|(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests)[\s\S]{0,400}--skip-manifest-update|--skip-manifest-update[\s\S]{0,400}(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests))'
       - type: output-not-matches
         config:
           pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
+      - type: output-not-matches
+        config:
+          pattern: '(?i)\b(not|\w+n''t|\w+n’t|never|no need to|without|rather than|instead of|avoid)\b(\s+\w+){0,4}\s+wait(ing)?\b(?![^.\n]{0,200}(skip-manifest-update|compat|edit|patch))'
       - type: output-not-matches
         config:
           pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|\w+n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|\w+n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
@@ -401,7 +404,7 @@ stimuli:
           timeout: 2m
       - type: run-command
         config:
-          command: echo "679fd30c8b993aac925889f8b3dbd14f0d0193d57067ce8b2b6cd5e87840fc38  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "ecd02987c8be2693f796ea436226b92c327311a7ef3dace4ac0f673ec3b879a3  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains
