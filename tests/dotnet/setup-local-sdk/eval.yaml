@@ -222,7 +222,7 @@ stimuli:
           pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
       - type: output-not-matches
         config:
-          pattern: '(?i)\b(not|\w+n''t|\w+n’t|cannot|unable to|impossible to|never|no need to|without|rather than|instead of|avoid)\b(\s+\w+){0,4}\s+wait(ing)?\b(?!(?:\.(?=\d)|[^.\n]){0,200}(skip-manifest-update|compat|edit|patch))'
+          pattern: '(?i)\b(not|\w+n''t|\w+n’t|cannot|unable to|impossible to|never|no need to|without|rather than|instead of|avoid)\b(\s+\w+){0,4}\s+wait(ing)?\b(?![\s\S]{0,250}skip-manifest-update)'
       - type: output-not-matches
         config:
           pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|\w+n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|\w+n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
@@ -404,7 +404,7 @@ stimuli:
           timeout: 2m
       - type: run-command
         config:
-          command: echo "13fed648721db141eb25e331a4ae9e60a2b1b8d316370e6cac40738e6b5a7aaa  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "930f428c47f98a28a37b6e84d5ba8d3aa358a4c2558717fd5d5eedfd311a571e  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains

@@ -11,6 +11,8 @@
 #      a failed workload install still shuts the build servers down before the failure is acted on
 #   6. the calls and the guards sit on a reachable path: code under a constant-false condition or inside a function definition does not count
 #   7. the local dotnet is the project-local one: the path names .dotnet, or a variable assigned the constant '.dotnet'
+#   8. the installer arguments, resolved through the splatted array and the constant variables, are -Channel 12.0.1xx -Quality daily
+#      -InstallDir .dotnet, with no exact -Version pin
 $ErrorActionPreference = 'Stop'
 $candidate = Get-ChildItem -Path . -File | Where-Object { $_.Name -like 'install*.ps1' } | Select-Object -First 1
 if (-not $candidate) { Write-Host 'FAIL  no install*.ps1 in the workspace'; exit 1 }
@@ -100,14 +102,6 @@ function Test-Guard($ifAst, $varName) {
     }
     return ($condOk -and $bodyOk)
 }
-# the variable that Invoke-WebRequest -OutFile wrote the installer to: only `& <that variable>` counts as running the downloaded script
-$downloaded = $null
-foreach ($iwr in @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] -and $args[0].GetCommandName() -match '^(Invoke-WebRequest|iwr|curl|wget)$' }, $true))) {
-    $els = @($iwr.CommandElements)
-    for ($i = 0; $i -lt $els.Count - 1; $i++) {
-        if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^OutFile$|^o$') { $downloaded = Get-VariableName $els[$i + 1] }
-    }
-}
 function Test-Reachable($node) {
     # a call under `if ($false) { ... }`, `if (0)`, `while ($false)` or in the else of `if ($true)` never runs; constant conditions are evaluated
     function Get-ConstantTruth($pipeline) {
@@ -152,6 +146,54 @@ function Test-LocalPathText($text) {
     }
     return $false
 }
+function Resolve-Constant($name) {
+    # the single constant string a variable is assigned on reachable paths; $null when none, several, or not constant
+    $values = @()
+    foreach ($as in $allAssignments) {
+        if ((Get-VariableName $as.Left) -ne $name -or $as.Operator -ne [System.Management.Automation.Language.TokenKind]::Equals -or -not (Test-Reachable $as)) { continue }
+        $right = $as.Right; if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
+        try { $v = $right.SafeGetValue() } catch { return $null }
+        if ($v -is [string]) { $values += $v } else { return $null }
+    }
+    $distinct = @($values | Select-Object -Unique)
+    if ($distinct.Count -eq 1) { return $distinct[0] } else { return $null }
+}
+function Resolve-ArrayElements($expr) {
+    # flatten an array literal into tokens; constant strings stay, string variables resolve, anything else becomes '<?>'
+    $items = @()
+    if ($expr -is [System.Management.Automation.Language.ArrayExpressionAst]) { $items = @($expr.SubExpression.Statements | ForEach-Object { if ($_ -is [System.Management.Automation.Language.PipelineAst]) { $_.GetPureExpression() } else { $_ } }) }
+    elseif ($expr -is [System.Management.Automation.Language.ArrayLiteralAst]) { $items = @($expr.Elements) }
+    else { $items = @($expr) }
+    $out = @()
+    foreach ($it in $items) {
+        if ($it -is [System.Management.Automation.Language.ArrayLiteralAst]) { $out += Resolve-ArrayElements $it; continue }
+        if ($it -is [System.Management.Automation.Language.StringConstantExpressionAst]) { $out += $it.Value; continue }
+        if ($it -is [System.Management.Automation.Language.VariableExpressionAst]) { $v = Resolve-Constant $it.VariablePath.UserPath; $out += $(if ($null -ne $v) { $v } else { '<?>' }); continue }
+        $out += '<?>'
+    }
+    return $out
+}
+function Resolve-CommandTokens($cmd) {
+    # the arguments a command receives: direct elements, and the reachable `=`/`+=` assignments of each splatted variable, in source order
+    $out = @()
+    foreach ($el in @($cmd.CommandElements | Select-Object -Skip 1)) {
+        if ($el -is [System.Management.Automation.Language.CommandParameterAst]) { $out += ('-' + $el.ParameterName); if ($el.Argument) { $out += Resolve-ArrayElements $el.Argument }; continue }
+        if ($el -is [System.Management.Automation.Language.VariableExpressionAst] -and $el.Splatted) {
+            $name = $el.VariablePath.UserPath
+            foreach ($as in ($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and (Test-Reachable $_) } | Sort-Object { $_.Extent.StartOffset })) {
+                $right = $as.Right; if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
+                $out += Resolve-ArrayElements $right
+            }
+            continue
+        }
+        $out += Resolve-ArrayElements $el
+    }
+    return $out
+}
+function Get-ArgValue($tokens, $name) {
+    for ($i = 0; $i -lt $tokens.Count; $i++) { if ("$($tokens[$i])" -ieq "-$name" -and $i + 1 -lt $tokens.Count) { return "$($tokens[$i + 1])" } }
+    return $null
+}
 function Get-NativeArguments($cmd) {
     # only a real invocation counts: `& <downloaded installer variable> ...` or `& <dotnet(.exe) under the project-local .dotnet> ...`;
     # `Write-Host 'workload config'`, `& 'dotnet' ...` (the system SDK), `& "$installDir\dotnet.exe"` with $installDir = '/usr/share/dotnet'
@@ -169,6 +211,14 @@ function Get-NativeArguments($cmd) {
     if (-not ($isInstaller -or $isLocalDotnet)) { return $null }
     return (@($cmd.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join ' ')
 }
+# the variable that a reachable Invoke-WebRequest -OutFile wrote the installer to: only `& <that variable>` counts as running the downloaded script
+$downloaded = $null
+foreach ($iwr in @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] -and $args[0].GetCommandName() -match '^(Invoke-WebRequest|iwr|curl|wget)$' }, $true) | Where-Object { Test-Reachable $_ })) {
+    $els = @($iwr.CommandElements)
+    for ($i = 0; $i -lt $els.Count - 1; $i++) {
+        if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^OutFile$|^o$') { $downloaded = Get-VariableName $els[$i + 1] }
+    }
+}
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
 $commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true))
 $allAssignments = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true))
@@ -181,6 +231,13 @@ $required = @(
 foreach ($r in $required) {
     $cmd = $commands | Where-Object { $a = Get-NativeArguments $_; $null -ne $a -and $a -match $r.pattern -and (Test-Reachable $_) } | Select-Object -First 1
     if (-not $cmd) { Write-Host "FAIL  no $($r.name) call found"; $failures++; continue }
+    if ($r.name -eq 'dotnet-install script') {
+        # resolve the installer arguments statically: direct `-Name value` pairs plus the splatted array's reachable assignments, with
+        # string variables resolved to their single constant value; the call must install the 12.0.1xx channel, daily quality, into .dotnet
+        $tokens = @(Resolve-CommandTokens $cmd)
+        $argsOk = (Get-ArgValue $tokens 'InstallDir') -match '^(\./|\.\\)?\.dotnet[\\/]?$' -and (Get-ArgValue $tokens 'Channel') -eq '12.0.1xx' -and (Get-ArgValue $tokens 'Quality') -eq 'daily' -and -not (Get-ArgValue $tokens 'Version')
+        if ($argsOk) { Write-Host 'ok    dotnet-install: -Channel 12.0.1xx -Quality daily -InstallDir .dotnet' } else { Write-Host "FAIL  dotnet-install arguments resolve to [$($tokens -join ' ')], expected -Channel 12.0.1xx -Quality daily -InstallDir .dotnet"; $failures++ }
+    }
     if ($r.name -eq 'workload install') {
         $usesWorkloads = [bool]($cmd.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.VariableExpressionAst] -and $_.VariablePath.UserPath -eq 'Workloads' })
         if ($usesWorkloads) { Write-Host 'ok    workload install receives $Workloads' } else { Write-Host "FAIL  workload install does not pass `$Workloads ($($cmd.Extent.Text))"; $failures++ }
@@ -207,7 +264,7 @@ foreach ($r in $required) {
         $ok = [bool]$guardAst
         if ($ok -and $r.name -eq 'workload install') {
             # build-server shutdown must run between the capture and the first guard, so a failed install still releases the nodes
-            $shutdown = $commands | Where-Object { $a = Get-NativeArguments $_; $null -ne $a -and $a -match '^build-server\s+shutdown\b' -and $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $_.Extent.EndOffset -lt $guardAst.Extent.StartOffset } | Select-Object -First 1
+            $shutdown = $commands | Where-Object { $a = Get-NativeArguments $_; $null -ne $a -and $a -match '^build-server\s+shutdown\b' -and $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $_.Extent.EndOffset -lt $guardAst.Extent.StartOffset -and (Test-Reachable $_) } | Select-Object -First 1
             if (-not $shutdown) { Write-Host "FAIL  workload install: no build-server shutdown between the exit-code capture and the guard"; $failures++; continue }
         }
     }
