@@ -9,7 +9,8 @@
 #   4. the workload install call passes $Workloads, so the defaults reach the installer
 #   5. the native calls target the downloaded installer script and the local .dotnet SDK, not the system dotnet;
 #      a failed workload install still shuts the build servers down before the failure is acted on
-#   6. the calls and the guards sit on a reachable path: code under a constant-false condition or inside a function definition does not count
+#   6. the calls and the guards sit on a reachable path: code under a constant-false condition, or inside a function that no reachable
+#      call invokes, does not count; a function called from the top-level flow counts
 #   7. the local dotnet is the project-local one: the path names .dotnet, or a variable assigned the constant '.dotnet'
 #   8. the installer arguments, resolved as of the call through the splatted array (= resets, += appends) and the constant variables
 #      at that point, are -Channel 12.0.1xx -Quality daily -InstallDir .dotnet, with no exact -Version pin
@@ -102,7 +103,7 @@ function Test-Guard($ifAst, $varName) {
     }
     return ($condOk -and $bodyOk)
 }
-function Test-Reachable($node) {
+function Test-Reachable($node, $depth = 0) {
     # a call under `if ($false) { ... }`, `if (0)`, `while ($false)` or in the else of `if ($true)` never runs; constant conditions are evaluated
     function Get-ConstantTruth($pipeline) {
         if (-not $pipeline) { return $null }
@@ -115,7 +116,15 @@ function Test-Reachable($node) {
     }
     $child = $node; $parent = $node.Parent
     while ($parent) {
-        if ($parent -is [System.Management.Automation.Language.FunctionDefinitionAst]) { return $false }  # only the top-level flow runs for sure
+        if ($parent -is [System.Management.Automation.Language.FunctionDefinitionAst]) {
+            # a function body runs when some reachable call invokes it (from outside its own body); an uninvoked function never runs
+            if ($depth -ge 5) { return $false }
+            $fname = $parent.Name; $def = $parent
+            $calls = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] -and $args[0].GetCommandName() -eq $fname }, $true) |
+                Where-Object { -not ($_.Extent.StartOffset -ge $def.Extent.StartOffset -and $_.Extent.EndOffset -le $def.Extent.EndOffset) })
+            foreach ($call in $calls) { if (Test-Reachable $call ($depth + 1)) { return $true } }
+            return $false
+        }
         if ($parent -is [System.Management.Automation.Language.IfStatementAst]) {
             $inElse = $parent.ElseClause -and $parent.ElseClause.Extent.StartOffset -le $child.Extent.StartOffset -and $child.Extent.EndOffset -le $parent.ElseClause.Extent.EndOffset
             if ($inElse) {
