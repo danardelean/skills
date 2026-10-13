@@ -83,7 +83,8 @@ except ET.ParseError as exc:
 if root.find("./packageSources/clear") is None:
     print("no <clear /> under <packageSources>: user-level feeds would be inherited and the setup is not reproducible"); sys.exit(1)
 adds = {a.get("key", ""): a.get("value", "") for a in root.findall("./packageSources/add")}
-disabled = {d.get("key", "") for d in root.findall("./disabledPackageSources/add")}
+# NuGet disables a source only when the entry's value is true; value="false" leaves it enabled
+disabled = {d.get("key", "") for d in root.findall("./disabledPackageSources/add") if d.get("value", "true").strip().lower() == "true"}
 active = [v for k, v in adds.items() if k not in disabled]
 dnceng = "https://pkgs.dev.azure.com/dnceng/public/_packaging/%s/nuget/v3/index.json"
 # the darc-pub feeds dotnet/maui's NuGet.config listed on net11.0 and release/11.0.1xx-rc2 on October 11, 2026 (the alpha's

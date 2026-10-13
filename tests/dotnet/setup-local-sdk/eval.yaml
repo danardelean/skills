@@ -216,7 +216,7 @@ stimuli:
           pattern: '(update-mode|workload set|manifests)'
       - type: output-matches
         config:
-          pattern: '(?i)(wait(ing)?[\s\S]{0,120}(publish|public|Patch Tuesday|10\.0\.13|nuget\.org)|until [\s\S]{0,60}(published|public|released)|(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests)[\s\S]{0,400}--skip-manifest-update|--skip-manifest-update[\s\S]{0,400}(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests))'
+          pattern: '(?i)((?<!don''t )(?<!don’t )(?<!do not )(?<!not )(?<!never )(?<!no need to )(?<!without )(?<!rather than )(?<!instead of )(?<!avoid )\bwait(ing)?\b[\s\S]{0,120}(publish|public|Patch Tuesday|10\.0\.13|nuget\.org)|(?<!don''t )(?<!do not )(?<!not )(?<!without )\bwait(ing)?\b[\s\S]{0,120}\buntil\b[\s\S]{0,60}(published|public|released)|(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests)[\s\S]{0,400}--skip-manifest-update|--skip-manifest-update[\s\S]{0,400}(edit|patch|change|point|set|pin)[^\n]{0,120}(compat|mono\.toolchain|emscripten|WorkloadManifest\.json|sdk-manifests))'
       - type: output-not-matches
         config:
           pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
@@ -396,12 +396,12 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "1ae5eca1d8761f6e8e7c14c23987946ab61eb407ebbd39375f288e1be609d330  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "1704ed674806601dd7478e4c984856d1825171c60ae49322d9eb2eb31d0d0d77  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: run-command
         config:
-          command: echo "7b5be2895399b4c4832d19745eb6eb59d2a111c92c58eb82121e5c89adb04fef  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "cc79d5d04b918b39f39905acd7a8ffca95e3ce80c1370276e31f68b010554724  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains

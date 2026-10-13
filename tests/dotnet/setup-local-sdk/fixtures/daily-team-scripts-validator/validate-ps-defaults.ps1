@@ -66,10 +66,11 @@ function Get-NextStatement($node) {
     return $null
 }
 function Test-Guard($ifAst, $varName) {
-    # condition: a genuine non-zero test of the variable (truthy, -ne 0, -gt 0, 0 -ne, 0 -lt, -not (... -eq 0)); -ge 0 is true on success
+    # condition: a genuine non-zero test of the variable (truthy, -ne 0, 0 -ne, -not (... -eq 0)); -gt 0 misses the negative codes
+    # Windows reports for native failures with the high bit set, and -ge 0 is true on success
     $cond = (($ifAst.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ').Trim()
     $v = [regex]::Escape('$' + $varName)
-    $condOk = $cond -match ('^(' + $v + '|' + $v + '\s+-(ne|gt)\s+0|0\s+-(ne|lt)\s+' + $v + '|(-not|!)\s*\(?\s*' + $v + '\s+-eq\s+0\s*\)?)$')
+    $condOk = $cond -match ('^(' + $v + '|' + $v + '\s+-ne\s+0|0\s+-ne\s+' + $v + '|(-not|!)\s*\(?\s*' + $v + '\s+-eq\s+0\s*\)?)$')
     # the body must contain a real throw statement, or an exit statement with a literal non-zero code or the tested variable
     $bodyOk = $false
     foreach ($blk in ($ifAst.Clauses | ForEach-Object { $_.Item2 })) {
