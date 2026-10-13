@@ -73,16 +73,25 @@ function Test-Guard($ifAst, $varName) {
     $bodyOk = $body -match ('\bthrow\b|\bexit\s+(' + $v + '|[1-9]\d*)\b')
     return ($condOk -and $bodyOk)
 }
+function Get-NativeArguments($cmd) {
+    # only a real invocation counts: `& <script variable> ...` or `& <...dotnet(.exe)> ...`; `Write-Host 'workload config'` returns $null
+    if ($cmd.InvocationOperator -ne [System.Management.Automation.Language.TokenKind]::Ampersand) { return $null }
+    $first = $cmd.CommandElements[0]
+    $isScriptVar = $first -is [System.Management.Automation.Language.VariableExpressionAst]
+    $isDotnet = ($first -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or $first -is [System.Management.Automation.Language.StringConstantExpressionAst]) -and $first.Extent.Text -match 'dotnet(\.exe)?["'']?$'
+    if (-not ($isScriptVar -or $isDotnet)) { return $null }
+    return (@($cmd.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join ' ')
+}
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
 $commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true))
 $required = @(
     @{ name = 'dotnet-install script'; pattern = '@installArgs|-InstallDir' },
-    @{ name = 'workload config';       pattern = 'workload\s+config' },
-    @{ name = 'workload install';      pattern = 'workload\s+install' },
-    @{ name = 'build-server shutdown'; pattern = 'build-server\s+shutdown' }
+    @{ name = 'workload config';       pattern = '^workload\s+config\b' },
+    @{ name = 'workload install';      pattern = '^workload\s+install\b' },
+    @{ name = 'build-server shutdown'; pattern = '^build-server\s+shutdown\b' }
 )
 foreach ($r in $required) {
-    $cmd = $commands | Where-Object { $_.Extent.Text -match $r.pattern } | Select-Object -First 1
+    $cmd = $commands | Where-Object { $a = Get-NativeArguments $_; $null -ne $a -and $a -match $r.pattern } | Select-Object -First 1
     if (-not $cmd) { Write-Host "FAIL  no $($r.name) call found"; $failures++; continue }
     if ($r.name -eq 'workload install') {
         $usesWorkloads = [bool]($cmd.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.VariableExpressionAst] -and $_.VariablePath.UserPath -eq 'Workloads' })

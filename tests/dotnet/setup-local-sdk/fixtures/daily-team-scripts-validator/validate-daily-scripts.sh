@@ -10,7 +10,7 @@
 #   7. the successful run leaves global.json with the SDK version and sdk.paths, and .dotnet/ in .gitignore
 #   8. dotnet-install is called with --channel 12.0.1xx --quality daily --install-dir .dotnet
 #   9. the workspace NuGet config is valid XML that clears inherited sources and has active nuget.org, dotnet12,
-#      android and macios sources with the exact nuget.org and dnceng URL shapes
+#      android and macios sources, each equal to one of the pinned feed URLs (not just a URL of the right shape)
 #  10. a wrong-band or wrong-lane workload is caught in any position of the list, not only the first
 #  11. run without arguments, the script installs ios and android by default
 #  12. a NuGet config without an enabled dotnet feed (absent, commented out, disabled, or a look-alike URL on another host) stops the script before workload install
@@ -85,11 +85,14 @@ if root.find("./packageSources/clear") is None:
 adds = {a.get("key", ""): a.get("value", "") for a in root.findall("./packageSources/add")}
 disabled = {d.get("key", "") for d in root.findall("./disabledPackageSources/add")}
 active = [v for k, v in adds.items() if k not in disabled]
-import re
-dnceng = r"https://pkgs\.dev\.azure\.com/dnceng/public/_packaging/%s/nuget/v3/index\.json"
-need = {"nuget.org": r"https://api\.nuget\.org/v3/index\.json", "dotnet12": dnceng % "dotnet12",
-        "android": dnceng % r"darc-pub-dotnet-android-[A-Za-z0-9-]+", "macios": dnceng % r"darc-pub-dotnet-macios-[A-Za-z0-9-]+"}
-missing = [name for name, pat in need.items() if not any(re.fullmatch(pat, v.strip()) for v in active)]
+dnceng = "https://pkgs.dev.azure.com/dnceng/public/_packaging/%s/nuget/v3/index.json"
+# the darc-pub feeds dotnet/maui's NuGet.config listed on net11.0 and release/11.0.1xx-rc2 on October 11, 2026 (the alpha's
+# iOS and Android workloads carry packs of the previous major); refresh this set when those branches move their feeds
+android = {dnceng % n for n in ("darc-pub-dotnet-android-b4100484", "darc-pub-dotnet-android-db080b91", "darc-pub-dotnet-android-db080b91-1")}
+macios = {dnceng % "darc-pub-dotnet-macios-fd471cba"}
+need = {"nuget.org": {"https://api.nuget.org/v3/index.json"}, "dotnet12": {dnceng % "dotnet12"}, "android": android, "macios": macios}
+present = {v.strip() for v in active}
+missing = [name for name, urls in need.items() if not (urls & present)]
 if missing:
     print("no active source for: %s" % ", ".join(missing)); sys.exit(1)
 PY
