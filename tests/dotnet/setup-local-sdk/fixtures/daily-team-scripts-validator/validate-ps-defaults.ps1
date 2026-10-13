@@ -65,12 +65,20 @@ function Get-NextStatement($node) {
 }
 function Test-Guard($ifAst, $varName) {
     # condition: a genuine non-zero test of the variable (truthy, -ne 0, -gt 0, 0 -ne, 0 -lt, -not (... -eq 0)); -ge 0 is true on success
-    # body: throw, or exit with a literal non-zero code or with the tested variable itself
     $cond = (($ifAst.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ').Trim()
     $v = [regex]::Escape('$' + $varName)
     $condOk = $cond -match ('^(' + $v + '|' + $v + '\s+-(ne|gt)\s+0|0\s+-(ne|lt)\s+' + $v + '|(-not|!)\s*\(?\s*' + $v + '\s+-eq\s+0\s*\)?)$')
-    $body = ($ifAst.Clauses | ForEach-Object { $_.Item2.Extent.Text }) -join ' '
-    $bodyOk = $body -match ('\bthrow\b|\bexit\s+(' + $v + '|[1-9]\d*)\b')
+    # the body must contain a real throw statement, or an exit statement with a literal non-zero code or the tested variable
+    $bodyOk = $false
+    foreach ($blk in ($ifAst.Clauses | ForEach-Object { $_.Item2 })) {
+        if (@($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ThrowStatementAst] }, $true)).Count -gt 0) { $bodyOk = $true }
+        foreach ($ex in @($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ExitStatementAst] }, $true))) {
+            if (-not $ex.Pipeline) { continue }  # a bare `exit` is exit 0
+            $expr = $ex.Pipeline.GetPureExpression()
+            if ($expr -is [System.Management.Automation.Language.ConstantExpressionAst] -and $expr.Value -is [int] -and $expr.Value -ne 0) { $bodyOk = $true }
+            elseif ($expr -is [System.Management.Automation.Language.VariableExpressionAst] -and $expr.VariablePath.UserPath -eq $varName) { $bodyOk = $true }
+        }
+    }
     return ($condOk -and $bodyOk)
 }
 function Get-NativeArguments($cmd) {
