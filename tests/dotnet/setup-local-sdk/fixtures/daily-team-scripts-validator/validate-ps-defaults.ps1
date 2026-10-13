@@ -211,6 +211,10 @@ function Get-NativeArguments($cmd) {
     if (-not ($isInstaller -or $isLocalDotnet)) { return $null }
     return (@($cmd.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join ' ')
 }
+# the AST indexes the checks below share; built before the download scan, which resolves -Uri variables through them
+$ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
+$commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true))
+$allAssignments = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true))
 # the variables that reachable Invoke-WebRequest -OutFile calls wrote the installer to, with where each download ends: only
 # `& <such a variable>` after its download counts as running the downloaded script
 $downloads = @()
@@ -227,9 +231,6 @@ foreach ($iwr in @($ast.FindAll({ $args[0] -is [System.Management.Automation.Lan
     # only a download from an official dotnet-install.ps1 address counts
     if ($outVar -and $uri -match '^https://(dot\.net/v1|dotnet\.microsoft\.com/download/dotnet/scripts/v1|builds\.dotnet\.microsoft\.com/dotnet/scripts/v1)/dotnet-install\.ps1$') { $downloads += [pscustomobject]@{ Name = $outVar; End = $iwr.Extent.EndOffset } }
 }
-$ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
-$commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true))
-$allAssignments = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true))
 $required = @(
     @{ name = 'dotnet-install script'; pattern = '@installArgs|-InstallDir' },
     @{ name = 'workload config';       pattern = '^workload\s+config\s+--update-mode\s+manifests\b' },
