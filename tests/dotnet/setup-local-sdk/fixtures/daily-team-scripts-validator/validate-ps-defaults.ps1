@@ -9,6 +9,7 @@
 #   4. the workload install call passes $Workloads, so the defaults reach the installer
 #   5. the native calls target the downloaded installer script and the local .dotnet SDK, not the system dotnet;
 #      a failed workload install still shuts the build servers down before the failure is acted on
+#   6. the calls sit on a reachable path: code under a constant-false condition does not count
 $ErrorActionPreference = 'Stop'
 $candidate = Get-ChildItem -Path . -File | Where-Object { $_.Name -like 'install*.ps1' } | Select-Object -First 1
 if (-not $candidate) { Write-Host 'FAIL  no install*.ps1 in the workspace'; exit 1 }
@@ -92,6 +93,35 @@ foreach ($iwr in @($ast.FindAll({ $args[0] -is [System.Management.Automation.Lan
         if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^OutFile$|^o$') { $downloaded = Get-VariableName $els[$i + 1] }
     }
 }
+function Test-Reachable($node) {
+    # a call under `if ($false) { ... }`, `if (0)`, `while ($false)` or in the else of `if ($true)` never runs; constant conditions are evaluated
+    function Get-ConstantTruth($pipeline) {
+        if (-not $pipeline) { return $null }
+        $expr = $pipeline.GetPureExpression(); if (-not $expr) { return $null }
+        if ($expr -is [System.Management.Automation.Language.VariableExpressionAst]) {
+            switch ($expr.VariablePath.UserPath.ToLowerInvariant()) { 'true' { return $true } 'false' { return $false } 'null' { return $false } default { return $null } }
+        }
+        if ($expr -is [System.Management.Automation.Language.ConstantExpressionAst]) { try { return [bool]$expr.SafeGetValue() } catch { return $null } }
+        return $null
+    }
+    $child = $node; $parent = $node.Parent
+    while ($parent) {
+        if ($parent -is [System.Management.Automation.Language.IfStatementAst]) {
+            $inElse = $parent.ElseClause -and $parent.ElseClause.Extent.StartOffset -le $child.Extent.StartOffset -and $child.Extent.EndOffset -le $parent.ElseClause.Extent.EndOffset
+            if ($inElse) {
+                foreach ($c in $parent.Clauses) { if ((Get-ConstantTruth $c.Item1) -eq $true) { return $false } }
+            } else {
+                foreach ($c in $parent.Clauses) {
+                    if ($c.Item2.Extent.StartOffset -le $child.Extent.StartOffset -and $child.Extent.EndOffset -le $c.Item2.Extent.EndOffset) { if ((Get-ConstantTruth $c.Item1) -eq $false) { return $false } }
+                }
+            }
+        } elseif ($parent -is [System.Management.Automation.Language.WhileStatementAst] -or $parent -is [System.Management.Automation.Language.DoWhileStatementAst]) {
+            if ((Get-ConstantTruth $parent.Condition) -eq $false -and $parent -is [System.Management.Automation.Language.WhileStatementAst]) { return $false }
+        }
+        $child = $parent; $parent = $parent.Parent
+    }
+    return $true
+}
 function Get-NativeArguments($cmd) {
     # only a real invocation counts: `& <downloaded installer variable> ...` or `& <local .dotnet ... dotnet(.exe)> ...`;
     # `Write-Host 'workload config'`, `& 'dotnet' ...` (the system SDK) and `& $other @installArgs` return $null
@@ -112,7 +142,7 @@ $required = @(
     @{ name = 'build-server shutdown'; pattern = '^build-server\s+shutdown\b' }
 )
 foreach ($r in $required) {
-    $cmd = $commands | Where-Object { $a = Get-NativeArguments $_; $null -ne $a -and $a -match $r.pattern } | Select-Object -First 1
+    $cmd = $commands | Where-Object { $a = Get-NativeArguments $_; $null -ne $a -and $a -match $r.pattern -and (Test-Reachable $_) } | Select-Object -First 1
     if (-not $cmd) { Write-Host "FAIL  no $($r.name) call found"; $failures++; continue }
     if ($r.name -eq 'workload install') {
         $usesWorkloads = [bool]($cmd.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.VariableExpressionAst] -and $_.VariablePath.UserPath -eq 'Workloads' })
