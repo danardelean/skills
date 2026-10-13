@@ -102,6 +102,7 @@ function Test-Reachable($node, $depth = 0) {
             # a function body runs when some reachable call invokes it (from outside its own body); an uninvoked function never runs
             if ($depth -ge 5) { return $false }
             $fname = $parent.Name; $def = $parent
+            if ($def.Parent -and -not (Test-Reachable $def ($depth + 1))) { return $false }  # a definition under if ($false) never happens
             $calls = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] -and $args[0].GetCommandName() -eq $fname }, $true) |
                 Where-Object { -not ($_.Extent.StartOffset -ge $def.Extent.StartOffset -and $_.Extent.EndOffset -le $def.Extent.EndOffset) })
             foreach ($call in $calls) { if (Test-Reachable $call ($depth + 1)) { return $true } }

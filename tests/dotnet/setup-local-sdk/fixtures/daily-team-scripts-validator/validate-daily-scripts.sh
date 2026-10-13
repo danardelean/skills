@@ -10,12 +10,18 @@
 #   7. the successful run leaves a valid global.json whose sdk.version is the SDK version and sdk.paths is [.dotnet, $host$], and .dotnet/ in .gitignore
 #   8. dotnet-install is called with --channel 12.0.1xx --quality daily --install-dir .dotnet
 #   9. the workspace NuGet config is valid XML that clears inherited sources and has active nuget.org, dotnet12,
-#      android and macios sources, all of the pinned feed URLs of each family (not just a URL of the right shape)
+#      android and macios sources, all of the expected feed URLs of each family (names passed on the command line)
 #  10. a wrong-band or wrong-lane workload is caught in any position of the list, not only the first
 #  11. run without arguments, the script installs ios and android by default
 #  12. a NuGet config without an enabled dotnet feed (absent, commented out, disabled, or a look-alike URL on another host) stops the script before workload install
 #  13. a failing workload config stops the script before workload install; a failing build-server shutdown fails the script
 set -uo pipefail
+# the expected feed names come from the grader's command line, not from this staged file, so the workspace does not reveal them:
+#   --dotnet-feed <name> --android-feeds <name,name,...> --macios-feeds <name,...>
+DOTNET_FEED=""; ANDROID_FEEDS=""; MACIOS_FEEDS=""
+while [ $# -gt 0 ]; do case "$1" in --dotnet-feed) DOTNET_FEED="$2"; shift ;; --android-feeds) ANDROID_FEEDS="$2"; shift ;; --macios-feeds) MACIOS_FEEDS="$2"; shift ;; *) echo "unknown argument: $1" >&2; exit 2 ;; esac; shift; done
+[ -n "$DOTNET_FEED" ] && [ -n "$ANDROID_FEEDS" ] && [ -n "$MACIOS_FEEDS" ] || { echo "usage: $0 --dotnet-feed <name> --android-feeds <a,b,..> --macios-feeds <a,..>" >&2; exit 2; }
+export DOTNET_FEED ANDROID_FEEDS MACIOS_FEEDS
 cd "$(dirname "$0")/.." || exit 2
 candidate="$(ls install*.sh 2>/dev/null | head -1)"
 [ -n "$candidate" ] || { echo "no install*.sh in the workspace" >&2; exit 1; }
@@ -86,12 +92,13 @@ adds = {a.get("key", ""): a.get("value", "") for a in root.findall("./packageSou
 # NuGet disables a source only when the entry's value is true; value="false" leaves it enabled
 disabled = {d.get("key", "") for d in root.findall("./disabledPackageSources/add") if d.get("value", "true").strip().lower() == "true"}
 active = [v for k, v in adds.items() if k not in disabled]
+import os
 dnceng = "https://pkgs.dev.azure.com/dnceng/public/_packaging/%s/nuget/v3/index.json"
-# the darc-pub feeds dotnet/maui's NuGet.config listed on net11.0 and release/11.0.1xx-rc2 on October 11, 2026 (the alpha's
-# iOS and Android workloads carry packs of the previous major); refresh this set when those branches move their feeds
-android = {dnceng % n for n in ("darc-pub-dotnet-android-b4100484", "darc-pub-dotnet-android-db080b91", "darc-pub-dotnet-android-db080b91-1")}
-macios = {dnceng % "darc-pub-dotnet-macios-fd471cba"}
-need = {"nuget.org": {"https://api.nuget.org/v3/index.json"}, "dotnet12": {dnceng % "dotnet12"}, "android": android, "macios": macios}
+# the expected feed names arrive from the grader's command line (see the top of this script): the dotnet<major> feed and the darc-pub
+# feeds dotnet/maui lists for the band's branches; they are pinned evidence to refresh when those branches move their feeds
+android = {dnceng % n for n in os.environ["ANDROID_FEEDS"].split(",") if n}
+macios = {dnceng % n for n in os.environ["MACIOS_FEEDS"].split(",") if n}
+need = {"nuget.org": {"https://api.nuget.org/v3/index.json"}, os.environ["DOTNET_FEED"]: {dnceng % os.environ["DOTNET_FEED"]}, "android": android, "macios": macios}
 present = {v.strip() for v in active}
 missing = [name for name, urls in need.items() if not urls <= present]  # every pinned feed of the family, not just one
 if missing:
