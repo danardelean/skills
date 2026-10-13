@@ -97,7 +97,12 @@ foreach ($r in $required) {
         # the guard must come after the capture and inside the block that holds it
         $var = $Matches[1]
         $block = $nextStmt.Parent
-        $ok = [bool]($ifs | Where-Object { $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $_.Extent.EndOffset -le $block.Extent.EndOffset -and (Test-Guard $_ $var) })
+        # any write to the captured variable between the capture and a guard voids that guard ($rc = $LASTEXITCODE; $rc = 0; if ($rc) ...)
+        $writes = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) | Where-Object { (Get-VariableName $_.Left) -eq $var -and $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset })
+        $ok = [bool]($ifs | Where-Object {
+            $guard = $_
+            $guard.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $guard.Extent.EndOffset -le $block.Extent.EndOffset -and (Test-Guard $guard $var) -and
+            -not ($writes | Where-Object { $_.Extent.StartOffset -lt $guard.Extent.StartOffset }) })
     }
     if ($ok) { Write-Host "ok    $($r.name): failure stops the script" } else { Write-Host "FAIL  $($r.name): no guard that tests a non-zero exit code and throws or exits non-zero right after it ($next)"; $failures++ }
 }

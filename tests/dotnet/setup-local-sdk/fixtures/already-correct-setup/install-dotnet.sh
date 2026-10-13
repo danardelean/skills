@@ -74,7 +74,7 @@ write_global_json
 grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitignore
 if [ "$QUALITY" = "daily" ]; then
     # a daily's runtime and reference packs are not on nuget.org: every restore needs the feed, workloads or not; the messages must stand alone in the team's repo
-    "$INSTALL_DIR/dotnet" nuget list source --format Short 2>/dev/null | grep -Eq "^E +[^ ]*_packaging/dotnet${SDK_VERSION%%.*}/" \
+    "$INSTALL_DIR/dotnet" nuget list source --format Short 2>/dev/null | grep -Eq "^E +https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json *$" \
         || { echo "Daily SDK: no enabled dotnet${SDK_VERSION%%.*} feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun." >&2; exit 1; }
 fi
 if [ ${#WORKLOADS[@]} -gt 0 ]; then

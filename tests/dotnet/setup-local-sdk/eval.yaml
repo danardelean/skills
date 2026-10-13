@@ -222,7 +222,7 @@ stimuli:
           pattern: '(maui (is|was|has been) (now )?(successfully )?installed|workloads? (is|are|was|were|has been|have been) (now )?(successfully )?installed|Successfully installed workload)'
       - type: output-not-matches
         config:
-          pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|n''t|cannot|never|no|nor|neither)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|n''t|cannot|never|no|nor|neither)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
+          pattern: '(?i)((feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient|won''t)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need|removes? the need)\b[^.\n]{0,80}(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting|no (longer )?(need|have) to wait)|(no need to wait|don''t (have to |need to )?wait|do not (have to |need to )?wait|without waiting)[^.\n]{0,80}(feeds?|update[- ]mode|manifests? mode)(?:(?!\b(not|n''t|cannot|never|no|nor|neither|fails?|failed|unable|insufficient|won''t)\b)[^.\n]){0,60}\b(fix(es)?|solves?|resolves?|is enough|are enough|sufficient|all you need)\b)'
       - type: prompt
     rubric:
       - The agent explained that the missing 10.0.13 package is the previous major's servicing runtime that is not yet publicly available
@@ -396,12 +396,12 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "f923eec05bac0faee3c5cfead8adced804482276e2f69f48560134f1fe262068  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "9cd6fe6f9138547e2d6b2f154ae91e0dc9d566f58411c95158699f65596aede1  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: run-command
         config:
-          command: echo "0a43db00d3f715ddbb69c1d2d85b84357ff20c5da21121dc0355d4297f294a53  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "4bc30f3d564cb3ac639d7f03c933bc893f10c12823a67cf5dfc094cacb7d2601  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains
@@ -559,7 +559,7 @@ stimuli:
           path: .dotnet/dotnet
       - type: run-command
         config:
-          command: printf '%s\n' '51f17e66f06d0f62e7b380660cfa5eda85dccbc8820ab74fd008190df462d5a4  install-dotnet.sh' '4502089693b3e92ecc4ec14b06722a79abf7f8bad0b5ddc597df0302e80cb033  install-dotnet.ps1' '8085dfcedd5189369a333a0369b1deeb494eb9a3ad38339179cfa13fe49d64d1  global.json' 'a9b842eace120f22ff94adb9bc5da6b55191ecf7a1460c41d6ecd2696d4d5cbd  .gitignore' | sha256sum -c --quiet && [ "$(ls -A | grep -vxF -e .eval -e .git | sort | tr '\n' ' ')" = ".gitignore global.json install-dotnet.ps1 install-dotnet.sh " ]
+          command: printf '%s\n' 'b0ea6710e502d25618e0122c87e09daf57d4cfa5d731ae446e2bd7920f2211fc  install-dotnet.sh' '081ec4d2780b4febef68637f0f5ad39851d59e2362670bb2cb2c38e621ba9628  install-dotnet.ps1' '8085dfcedd5189369a333a0369b1deeb494eb9a3ad38339179cfa13fe49d64d1  global.json' 'a9b842eace120f22ff94adb9bc5da6b55191ecf7a1460c41d6ecd2696d4d5cbd  .gitignore' | sha256sum -c --quiet && [ "$(ls -A | grep -vxF -e .eval -e .git | sort | tr '\n' ' ')" = ".gitignore global.json install-dotnet.ps1 install-dotnet.sh " ]
           expected_exit_code: 0
           timeout: 1m
       - type: output-not-matches

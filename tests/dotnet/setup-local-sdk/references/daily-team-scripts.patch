@@ -20,7 +20,7 @@ index 0000000..90c9f2a
 +</configuration>
 diff --git a/install-dotnet.ps1 b/install-dotnet.ps1
 new file mode 100644
-index 0000000..a323691
+index 0000000..7fc7c75
 --- /dev/null
 +++ b/install-dotnet.ps1
 @@ -0,0 +1,83 @@
@@ -79,7 +79,7 @@ index 0000000..a323691
 +    # a daily's runtime and reference packs are not on nuget.org: every restore needs the feed, workloads or not; the messages must stand alone in the team's repo
 +    $major = "$sdkVersion".Split('.')[0]
 +    $sources = & "$installDir\dotnet.exe" nuget list source --format Short  # the effective configuration: E enabled, D disabled
-+    if (-not ($sources | Select-String -Pattern "^E +\S*_packaging/dotnet$major/" -Quiet)) {
++    if (-not ($sources | Select-String -Pattern "^E +https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json\s*$" -Quiet)) {
 +        throw "Daily SDK: no enabled dotnet$major feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun."
 +    }
 +}
@@ -109,7 +109,7 @@ index 0000000..a323691
 +Write-Host "Done. SDK: $sdkVersion"
 diff --git a/install-dotnet.sh b/install-dotnet.sh
 new file mode 100755
-index 0000000..505d8d4
+index 0000000..a4a27a3
 --- /dev/null
 +++ b/install-dotnet.sh
 @@ -0,0 +1,101 @@
@@ -189,7 +189,7 @@ index 0000000..505d8d4
 +grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitignore
 +if [ "$QUALITY" = "daily" ]; then
 +    # a daily's runtime and reference packs are not on nuget.org: every restore needs the feed, workloads or not; the messages must stand alone in the team's repo
-+    "$INSTALL_DIR/dotnet" nuget list source --format Short 2>/dev/null | grep -Eq "^E +[^ ]*_packaging/dotnet${SDK_VERSION%%.*}/" \
++    "$INSTALL_DIR/dotnet" nuget list source --format Short 2>/dev/null | grep -Eq "^E +https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json *$" \
 +        || { echo "Daily SDK: no enabled dotnet${SDK_VERSION%%.*} feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun." >&2; exit 1; }
 +fi
 +if [ ${#WORKLOADS[@]} -gt 0 ]; then
