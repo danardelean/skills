@@ -15,6 +15,7 @@
 #  11. run without arguments, the script installs ios and android by default
 #  12. a NuGet config without an enabled dotnet feed (absent, commented out, disabled, or a look-alike URL on another host) stops the script before workload install
 #  13. a failing workload config stops the script before workload install; a failing build-server shutdown fails the script
+#  14. the installer is fetched from an official dotnet-install.sh URL (the network stubs refuse any other address)
 set -uo pipefail
 # the expected feed names come from the grader's command line, not from this staged file, so the workspace does not reveal them:
 #   --dotnet-feed <name> --android-feeds <name,name,...> --macios-feeds <name,...>
@@ -60,15 +61,18 @@ if [ "$channel" != "$EXPECT_CHANNEL" ] || [ "$quality" != daily ] || [ "$d" != .
 fi
 mkdir -p "$dir" && cp "$FAKE_DOTNET_SRC" "$dir/dotnet" && chmod +x "$dir/dotnet"
 STUB
-# curl / wget stubs: serve the fake installer to -o/-O <file> or to stdout
+# curl / wget stubs: serve the fake installer to -o/-O <file> or to stdout, but only for an official dotnet-install.sh URL;
+# anything else (another host, no URL) fails like a real download would
 cat > "$stubs/curl" <<'STUB'
 #!/usr/bin/env bash
-out=""; while [ $# -gt 0 ]; do case "$1" in -o|--output) out="$2"; shift ;; -[a-zA-Z]*o) out="$2"; shift ;; --output=*) out="${1#*=}" ;; esac; shift; done
+out=""; url=""; while [ $# -gt 0 ]; do case "$1" in -o|--output) out="$2"; shift ;; -[a-zA-Z]*o) out="$2"; shift ;; --output=*) out="${1#*=}" ;; http://*|https://*) url="$1" ;; esac; shift; done
+case "$url" in https://dot.net/v1/dotnet-install.sh|https://dotnet.microsoft.com/download/dotnet/scripts/v1/dotnet-install.sh|https://builds.dotnet.microsoft.com/dotnet/scripts/v1/dotnet-install.sh) ;; *) echo "fake curl: not an official dotnet-install URL: '$url'" >&2; exit 22 ;; esac
 if [ -n "$out" ]; then cp "$FAKE_INSTALL_SRC" "$out"; else cat "$FAKE_INSTALL_SRC"; fi
 STUB
 cat > "$stubs/wget" <<'STUB'
 #!/usr/bin/env bash
-out=""; while [ $# -gt 0 ]; do case "$1" in -O|--output-document) out="$2"; shift ;; -*O) out="$2"; shift ;; --output-document=*) out="${1#*=}" ;; esac; shift; done
+out=""; url=""; while [ $# -gt 0 ]; do case "$1" in -O|--output-document) out="$2"; shift ;; -*O) out="$2"; shift ;; --output-document=*) out="${1#*=}" ;; http://*|https://*) url="$1" ;; esac; shift; done
+case "$url" in https://dot.net/v1/dotnet-install.sh|https://dotnet.microsoft.com/download/dotnet/scripts/v1/dotnet-install.sh|https://builds.dotnet.microsoft.com/dotnet/scripts/v1/dotnet-install.sh) ;; *) echo "fake wget: not an official dotnet-install URL: '$url'" >&2; exit 8 ;; esac
 if [ -n "$out" ] && [ "$out" != "-" ]; then cp "$FAKE_INSTALL_SRC" "$out"; else cat "$FAKE_INSTALL_SRC"; fi
 STUB
 chmod +x "$stubs"/*

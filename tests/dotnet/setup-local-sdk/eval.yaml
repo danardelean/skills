@@ -402,12 +402,12 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "3164310536f16e23d9f4c736af3dfcc6a0c0904b9bb9f4bbd5e2c81f13c9e2d7  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh --dotnet-feed dotnet12 --android-feeds darc-pub-dotnet-android-b4100484,darc-pub-dotnet-android-db080b91,darc-pub-dotnet-android-db080b91-1 --macios-feeds darc-pub-dotnet-macios-fd471cba
+          command: echo "4d904c403474cdf41fb6baa3eebd674157a533c502d765b303ea139cf0e89f84  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh --dotnet-feed dotnet12 --android-feeds darc-pub-dotnet-android-b4100484,darc-pub-dotnet-android-db080b91,darc-pub-dotnet-android-db080b91-1 --macios-feeds darc-pub-dotnet-macios-fd471cba
           expected_exit_code: 0
           timeout: 2m
       - type: run-command
         config:
-          command: echo "babf24a4fc54804f3f15f2866747113644eb4dc2315303113b2826abca03633b  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "4e2e77408dc09defc2fc5ea5a6b0898a7682fd20cb3e254207b8f40621f8249b  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains

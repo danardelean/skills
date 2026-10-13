@@ -12,7 +12,8 @@
 #   6. the calls and the guards sit on a reachable path: code under a constant-false condition, or inside a function that no reachable
 #      call invokes, does not count; a function called from the top-level flow counts
 #   7. the local dotnet is the project-local one as of each call: the path names .dotnet, or a variable whose last reachable assignment
-#      before the call is a dotnet path under '.dotnet'; the installer variable must have been downloaded to before it is invoked
+#      before the call is a dotnet path under '.dotnet'; the installer variable must have been downloaded to, from an official
+#      dotnet-install.ps1 address, before it is invoked
 #   8. the installer arguments, resolved as of the call through the splatted array (= resets, += appends) and the constant variables
 #      at that point, are -Channel 12.0.1xx -Quality daily -InstallDir .dotnet, with no exact -Version pin
 $ErrorActionPreference = 'Stop'
@@ -214,10 +215,17 @@ function Get-NativeArguments($cmd) {
 # `& <such a variable>` after its download counts as running the downloaded script
 $downloads = @()
 foreach ($iwr in @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] -and $args[0].GetCommandName() -match '^(Invoke-WebRequest|iwr|curl|wget)$' }, $true) | Where-Object { Test-Reachable $_ })) {
-    $els = @($iwr.CommandElements)
+    $els = @($iwr.CommandElements); $outVar = $null; $uri = $null
     for ($i = 0; $i -lt $els.Count - 1; $i++) {
-        if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^OutFile$|^o$') { $downloads += [pscustomobject]@{ Name = (Get-VariableName $els[$i + 1]); End = $iwr.Extent.EndOffset } }
+        if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^OutFile$|^o$') { $outVar = Get-VariableName $els[$i + 1] }
+        if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^Uri$|^u$') {
+            $u = $els[$i + 1]
+            if ($u -is [System.Management.Automation.Language.StringConstantExpressionAst]) { $uri = $u.Value }
+            elseif ($u -is [System.Management.Automation.Language.VariableExpressionAst]) { $uri = Resolve-Constant $u.VariablePath.UserPath $iwr.Extent.StartOffset }
+        }
     }
+    # only a download from an official dotnet-install.ps1 address counts
+    if ($outVar -and $uri -match '^https://(dot\.net/v1|dotnet\.microsoft\.com/download/dotnet/scripts/v1|builds\.dotnet\.microsoft\.com/dotnet/scripts/v1)/dotnet-install\.ps1$') { $downloads += [pscustomobject]@{ Name = $outVar; End = $iwr.Extent.EndOffset } }
 }
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
 $commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true))
@@ -241,17 +249,17 @@ foreach ($r in $required) {
     if ($r.name -eq 'workload install') {
         # 2. default workloads, judged at this call: the Workloads parameter default, or a reachable constant assignment to $Workloads
         #    that ends before the call; an assignment after the call or under a constant-false condition does not count
+        # the last reachable assignment to $Workloads before the call decides; the parameter default applies only when nothing supersedes it
         $found = $false
-        if ($ast.ParamBlock) {
+        $lastAssign = $null
+        foreach ($a in ($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq 'Workloads' -and $_.Extent.EndOffset -le $cmd.Extent.StartOffset -and (Test-Reachable $_) } | Sort-Object { $_.Extent.StartOffset })) { $lastAssign = $a }
+        if ($lastAssign) {
+            $right = $lastAssign.Right
+            if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
+            $found = Test-HasBoth (Get-ConstantValues $right)
+        } elseif ($ast.ParamBlock) {
             foreach ($p in $ast.ParamBlock.Parameters) {
                 if ($p.Name.VariablePath.UserPath -eq 'Workloads' -and $p.DefaultValue -and (Test-HasBoth (Get-ConstantValues $p.DefaultValue))) { $found = $true }
-            }
-        }
-        if (-not $found) {
-            foreach ($a in ($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq 'Workloads' -and $_.Extent.EndOffset -le $cmd.Extent.StartOffset -and (Test-Reachable $_) })) {
-                $right = $a.Right
-                if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
-                if (Test-HasBoth (Get-ConstantValues $right)) { $found = $true; break }
             }
         }
         if ($found) { Write-Host "ok    $($candidate.Name) defaults `$Workloads to ios and android at the install call" }
