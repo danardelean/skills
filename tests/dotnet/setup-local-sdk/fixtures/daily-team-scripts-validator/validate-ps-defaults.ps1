@@ -11,7 +11,8 @@
 #      a failed workload install still shuts the build servers down before the failure is acted on
 #   6. the calls and the guards sit on a reachable path: code under a constant-false condition, or inside a function that no reachable
 #      call invokes, does not count; a function called from the top-level flow counts
-#   7. the local dotnet is the project-local one: the path names .dotnet, or a variable assigned the constant '.dotnet'
+#   7. the local dotnet is the project-local one as of each call: the path names .dotnet, or a variable whose last reachable assignment
+#      before the call is a dotnet path under '.dotnet'; the installer variable must have been downloaded to before it is invoked
 #   8. the installer arguments, resolved as of the call through the splatted array (= resets, += appends) and the constant variables
 #      at that point, are -Channel 12.0.1xx -Quality daily -InstallDir .dotnet, with no exact -Version pin
 $ErrorActionPreference = 'Stop'
@@ -122,17 +123,13 @@ function Test-Reachable($node, $depth = 0) {
     }
     return $true
 }
-function Test-LocalPathText($text) {
-    # a path is project-local when it names .dotnet literally, or through a variable that is assigned the constant '.dotnet' (./.dotnet, .\.dotnet)
+function Test-LocalPathText($text, $offset) {
+    # a path is project-local when it names .dotnet literally, or through a variable whose last reachable constant assignment before
+    # $offset is '.dotnet' (./.dotnet, .\.dotnet)
     if ($text -match '(^|[\\/"'' ])\.dotnet([\\/"'']|$)') { return $true }
     foreach ($m in [regex]::Matches($text, '\$\{?(\w+)\}?')) {
-        $var = $m.Groups[1].Value
-        foreach ($as in $allAssignments) {
-            if ((Get-VariableName $as.Left) -ne $var) { continue }
-            $right = $as.Right; if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
-            $val = $null; try { $val = $right.SafeGetValue() } catch { }
-            if ($val -is [string] -and $val -match '^(\./|\.\\)?\.dotnet[\\/]?$') { return $true }
-        }
+        $val = Resolve-Constant $m.Groups[1].Value $offset
+        if ($val -is [string] -and $val -match '^(\./|\.\\)?\.dotnet[\\/]?$') { return $true }
     }
     return $false
 }
@@ -192,23 +189,29 @@ function Get-NativeArguments($cmd) {
     # and `& $other @installArgs` return $null
     if ($cmd.InvocationOperator -ne [System.Management.Automation.Language.TokenKind]::Ampersand) { return $null }
     $first = $cmd.CommandElements[0]
-    $isInstaller = $first -is [System.Management.Automation.Language.VariableExpressionAst] -and $downloaded -and $first.VariablePath.UserPath -eq $downloaded
+    $offset = $cmd.Extent.StartOffset
+    # the installer: a variable that a reachable Invoke-WebRequest -OutFile wrote to before this call
+    $isInstaller = $first -is [System.Management.Automation.Language.VariableExpressionAst] -and [bool]($downloads | Where-Object { $_.Name -eq $first.VariablePath.UserPath -and $_.End -le $offset })
     $isLocalDotnet = ($first -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or $first -is [System.Management.Automation.Language.StringConstantExpressionAst]) -and
-        $first.Extent.Text -match 'dotnet(\.exe)?["'']?$' -and (Test-LocalPathText $first.Extent.Text)
+        $first.Extent.Text -match 'dotnet(\.exe)?["'']?$' -and (Test-LocalPathText $first.Extent.Text $offset)
     if (-not $isLocalDotnet -and -not $isInstaller -and $first -is [System.Management.Automation.Language.VariableExpressionAst]) {
-        # `$dotnet = Join-Path $installDir 'dotnet.exe'; & $dotnet ...`: a variable assigned a dotnet path under the local SDK counts too
+        # `$dotnet = Join-Path $installDir 'dotnet.exe'; & $dotnet ...`: the variable's last reachable assignment before this call must be a
+        # dotnet path under the local SDK; a later reassignment does not rescue an earlier system-SDK call
         $name = $first.VariablePath.UserPath
-        $isLocalDotnet = [bool]($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and $_.Right.Extent.Text -match 'dotnet' -and (Test-LocalPathText $_.Right.Extent.Text) })
+        $last = $null
+        foreach ($as in ($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and $_.Extent.EndOffset -le $offset -and (Test-Reachable $_) } | Sort-Object { $_.Extent.StartOffset })) { $last = $as }
+        $isLocalDotnet = [bool]($last -and $last.Right.Extent.Text -match 'dotnet' -and (Test-LocalPathText $last.Right.Extent.Text $last.Extent.StartOffset))
     }
     if (-not ($isInstaller -or $isLocalDotnet)) { return $null }
     return (@($cmd.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join ' ')
 }
-# the variable that a reachable Invoke-WebRequest -OutFile wrote the installer to: only `& <that variable>` counts as running the downloaded script
-$downloaded = $null
+# the variables that reachable Invoke-WebRequest -OutFile calls wrote the installer to, with where each download ends: only
+# `& <such a variable>` after its download counts as running the downloaded script
+$downloads = @()
 foreach ($iwr in @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] -and $args[0].GetCommandName() -match '^(Invoke-WebRequest|iwr|curl|wget)$' }, $true) | Where-Object { Test-Reachable $_ })) {
     $els = @($iwr.CommandElements)
     for ($i = 0; $i -lt $els.Count - 1; $i++) {
-        if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^OutFile$|^o$') { $downloaded = Get-VariableName $els[$i + 1] }
+        if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^OutFile$|^o$') { $downloads += [pscustomobject]@{ Name = (Get-VariableName $els[$i + 1]); End = $iwr.Extent.EndOffset } }
     }
 }
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
