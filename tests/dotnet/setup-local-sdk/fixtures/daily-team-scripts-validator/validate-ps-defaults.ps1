@@ -1,7 +1,7 @@
 # Deterministic checks of the generated PowerShell team script, through the PowerShell parser:
 #   1. it parses
-#   2. it defaults the workload list to ios and android (the Workloads parameter default, or a constant
-#      assignment to $Workloads), so that running it without arguments installs both
+#   2. it defaults the workload list to ios and android at the workload install call (the Workloads parameter default, or a
+#      reachable constant assignment to $Workloads before the call), so that running it without arguments installs both
 #   3. every native call whose failure must stop the script is followed by a $LASTEXITCODE check that
 #      tests for failure (not an inverted condition) and throws or exits non-zero: the downloaded
 #      dotnet-install script, workload config, workload install, build-server shutdown
@@ -44,25 +44,6 @@ function Get-VariableName($expr) {
     if ($expr -is [System.Management.Automation.Language.VariableExpressionAst]) { return $expr.VariablePath.UserPath }
     return ''
 }
-# 2. default workloads
-$found = $false
-if ($ast.ParamBlock) {
-    foreach ($p in $ast.ParamBlock.Parameters) {
-        if ($p.Name.VariablePath.UserPath -eq 'Workloads' -and $p.DefaultValue -and (Test-HasBoth (Get-ConstantValues $p.DefaultValue))) { $found = $true }
-    }
-}
-if (-not $found) {
-    # fallback: a constant assignment to $Workloads itself, not to any other variable
-    $assignments = $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true)
-    foreach ($a in $assignments) {
-        if ((Get-VariableName $a.Left) -ne 'Workloads') { continue }
-        $right = $a.Right
-        if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
-        if (Test-HasBoth (Get-ConstantValues $right)) { $found = $true; break }
-    }
-}
-if ($found) { Write-Host "ok    $($candidate.Name) defaults `$Workloads to ios and android" }
-else { Write-Host "FAIL  $($candidate.Name): neither the Workloads parameter default nor an assignment to `$Workloads holds both ios and android"; $failures++ }
 # 3. failure propagation: the statement right after each native call must look at $LASTEXITCODE, either
 #    `if ($LASTEXITCODE ...) { throw/exit }` or `$x = $LASTEXITCODE` with a later `if (... $x ...) { throw/exit }`
 function Get-EnclosingStatement($node) {
@@ -250,6 +231,23 @@ foreach ($r in $required) {
         if ($argsOk) { Write-Host 'ok    dotnet-install: -Channel 12.0.1xx -Quality daily -InstallDir .dotnet' } else { Write-Host "FAIL  dotnet-install arguments resolve to [$($tokens -join ' ')], expected -Channel 12.0.1xx -Quality daily -InstallDir .dotnet"; $failures++ }
     }
     if ($r.name -eq 'workload install') {
+        # 2. default workloads, judged at this call: the Workloads parameter default, or a reachable constant assignment to $Workloads
+        #    that ends before the call; an assignment after the call or under a constant-false condition does not count
+        $found = $false
+        if ($ast.ParamBlock) {
+            foreach ($p in $ast.ParamBlock.Parameters) {
+                if ($p.Name.VariablePath.UserPath -eq 'Workloads' -and $p.DefaultValue -and (Test-HasBoth (Get-ConstantValues $p.DefaultValue))) { $found = $true }
+            }
+        }
+        if (-not $found) {
+            foreach ($a in ($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq 'Workloads' -and $_.Extent.EndOffset -le $cmd.Extent.StartOffset -and (Test-Reachable $_) })) {
+                $right = $a.Right
+                if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
+                if (Test-HasBoth (Get-ConstantValues $right)) { $found = $true; break }
+            }
+        }
+        if ($found) { Write-Host "ok    $($candidate.Name) defaults `$Workloads to ios and android at the install call" }
+        else { Write-Host "FAIL  $($candidate.Name): neither the Workloads parameter default nor a reachable assignment to `$Workloads before the install call holds both ios and android"; $failures++ }
         $usesWorkloads = [bool]($cmd.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.VariableExpressionAst] -and $_.VariablePath.UserPath -eq 'Workloads' })
         if ($usesWorkloads) { Write-Host 'ok    workload install receives $Workloads' } else { Write-Host "FAIL  workload install does not pass `$Workloads ($($cmd.Extent.Text))"; $failures++ }
     }
