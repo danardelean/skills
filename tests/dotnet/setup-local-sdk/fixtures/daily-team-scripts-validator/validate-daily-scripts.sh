@@ -7,7 +7,7 @@
 #   4. without a NuGet config the script stops before workload install
 #   5. when workload install fails, build servers are still shut down and the failure is propagated
 #   6. workload install receives the requested ids (the fake dotnet rejects a call without ios and android)
-#   7. the successful run leaves global.json with the SDK version and sdk.paths, and .dotnet/ in .gitignore
+#   7. the successful run leaves a valid global.json whose sdk.version is the SDK version and sdk.paths is [.dotnet, $host$], and .dotnet/ in .gitignore
 #   8. dotnet-install is called with --channel 12.0.1xx --quality daily --install-dir .dotnet
 #   9. the workspace NuGet config is valid XML that clears inherited sources and has active nuget.org, dotnet12,
 #      android and macios sources, each equal to one of the pinned feed URLs (not just a URL of the right shape)
@@ -131,7 +131,17 @@ if [ -f "$root/alpha-right-band/calls.log" ]; then
   sd=$(grep -n '^build-server shutdown' "$root/alpha-right-band/calls.log" | tail -1 | cut -d: -f1)
   if [ -n "$sd" ] && [ -n "$ins" ] && [ "$sd" -gt "$ins" ]; then echo "ok    build-server shutdown after workload install"; else echo "FAIL  build-server shutdown missing or not after workload install"; failures=$((failures+1)); fi
   gj="$root/alpha-right-band/global.json"
-  if [ -f "$gj" ] && grep -q '"paths"' "$gj" && grep -qF '.dotnet' "$gj" && grep -qF '$host$' "$gj" && grep -qF "$V12" "$gj"; then echo "ok    global.json pins $V12 with sdk.paths"; else echo "FAIL  global.json missing, or without the SDK version, \"paths\", .dotnet and \$host\$"; failures=$((failures+1)); fi
+  if [ -f "$gj" ] && [ -n "$py" ] && "$py" - "$gj" "$V12" <<'PY'
+import json, sys
+try:
+    doc = json.load(open(sys.argv[1]))
+except Exception as exc:
+    print("global.json is not valid JSON: %s" % exc); sys.exit(1)
+sdk = doc.get("sdk") if isinstance(doc, dict) else None
+if not isinstance(sdk, dict) or sdk.get("version") != sys.argv[2] or sdk.get("paths") != [".dotnet", "$host$"]:
+    print("sdk.version=%r sdk.paths=%r, expected %r and ['.dotnet', '$host$']" % ((sdk or {}).get("version"), (sdk or {}).get("paths"), sys.argv[2])); sys.exit(1)
+PY
+  then echo "ok    global.json pins $V12 with sdk.paths [.dotnet, \$host\$]"; else echo "FAIL  global.json missing, not valid JSON, or sdk.version / sdk.paths wrong (see above)"; failures=$((failures+1)); fi
   if [ -f "$root/alpha-right-band/.gitignore" ] && grep -qx '\.dotnet/' "$root/alpha-right-band/.gitignore"; then echo "ok    .gitignore excludes .dotnet/"; else echo "FAIL  .gitignore does not exclude .dotnet/"; failures=$((failures+1)); fi
 fi
 run alpha-stale-band "$V12" 1 yes "ios     26.5.12193-net11-rc.1/11.0.100-rc.1   SDK 12.0.100-alpha.1" "android 37.99.0-preview.1.145/12.0.100-alpha.1   SDK 12.0.100-alpha.1"

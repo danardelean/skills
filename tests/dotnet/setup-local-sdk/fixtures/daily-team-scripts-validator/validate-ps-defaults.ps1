@@ -9,7 +9,7 @@
 #   4. the workload install call passes $Workloads, so the defaults reach the installer
 #   5. the native calls target the downloaded installer script and the local .dotnet SDK, not the system dotnet;
 #      a failed workload install still shuts the build servers down before the failure is acted on
-#   6. the calls sit on a reachable path: code under a constant-false condition does not count
+#   6. the calls sit on a reachable path: code under a constant-false condition or inside a function definition does not count
 $ErrorActionPreference = 'Stop'
 $candidate = Get-ChildItem -Path . -File | Where-Object { $_.Name -like 'install*.ps1' } | Select-Object -First 1
 if (-not $candidate) { Write-Host 'FAIL  no install*.ps1 in the workspace'; exit 1 }
@@ -25,6 +25,15 @@ function Test-HasBoth($values) {
     # only string constants count: with a boolean on the left, -contains would coerce 'ios' to $true
     $strings = @($values | Where-Object { $_ -is [string] })
     return (($strings -contains 'ios') -and ($strings -contains 'android'))
+}
+function Test-DirectPath($node, $block) {
+    $p = $node.Parent
+    while ($p -and -not [object]::ReferenceEquals($p, $block)) {
+        if ($p -is [System.Management.Automation.Language.IfStatementAst] -or $p -is [System.Management.Automation.Language.SwitchStatementAst] -or $p -is [System.Management.Automation.Language.LoopStatementAst] -or
+            $p -is [System.Management.Automation.Language.TryStatementAst] -or $p -is [System.Management.Automation.Language.ScriptBlockExpressionAst] -or $p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { return $false }
+        $p = $p.Parent
+    }
+    return [bool]$p
 }
 function Get-VariableName($expr) {
     while ($expr -is [System.Management.Automation.Language.ConvertExpressionAst] -or $expr -is [System.Management.Automation.Language.AttributedExpressionAst]) { $expr = $expr.Child }
@@ -72,11 +81,13 @@ function Test-Guard($ifAst, $varName) {
     $cond = (($ifAst.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ').Trim()
     $v = [regex]::Escape('$' + $varName)
     $condOk = $cond -match ('^(' + $v + '|' + $v + '\s+-ne\s+0|0\s+-ne\s+' + $v + '|(-not|!)\s*\(?\s*' + $v + '\s+-eq\s+0\s*\)?)$')
-    # the body must contain a real throw statement, or an exit statement with a literal non-zero code or the tested variable
+    # the body must contain a real throw statement, or an exit statement with a literal non-zero code or the tested variable,
+    # directly on the guard's path: a terminator nested under another condition, loop, try, script block or function does not count
     $bodyOk = $false
     foreach ($blk in ($ifAst.Clauses | ForEach-Object { $_.Item2 })) {
-        if (@($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ThrowStatementAst] }, $true)).Count -gt 0) { $bodyOk = $true }
-        foreach ($ex in @($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ExitStatementAst] }, $true))) {
+        $direct = @($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ThrowStatementAst] -or $args[0] -is [System.Management.Automation.Language.ExitStatementAst] }, $true) | Where-Object { Test-DirectPath $_ $blk })
+        if (@($direct | Where-Object { $_ -is [System.Management.Automation.Language.ThrowStatementAst] }).Count -gt 0) { $bodyOk = $true }
+        foreach ($ex in @($direct | Where-Object { $_ -is [System.Management.Automation.Language.ExitStatementAst] })) {
             if (-not $ex.Pipeline) { continue }  # a bare `exit` is exit 0
             $expr = $ex.Pipeline.GetPureExpression()
             if ($expr -is [System.Management.Automation.Language.ConstantExpressionAst] -and $expr.Value -is [int] -and $expr.Value -ne 0) { $bodyOk = $true }
@@ -106,6 +117,7 @@ function Test-Reachable($node) {
     }
     $child = $node; $parent = $node.Parent
     while ($parent) {
+        if ($parent -is [System.Management.Automation.Language.FunctionDefinitionAst]) { return $false }  # only the top-level flow runs for sure
         if ($parent -is [System.Management.Automation.Language.IfStatementAst]) {
             $inElse = $parent.ElseClause -and $parent.ElseClause.Extent.StartOffset -le $child.Extent.StartOffset -and $child.Extent.EndOffset -le $parent.ElseClause.Extent.EndOffset
             if ($inElse) {
@@ -130,11 +142,17 @@ function Get-NativeArguments($cmd) {
     $isInstaller = $first -is [System.Management.Automation.Language.VariableExpressionAst] -and $downloaded -and $first.VariablePath.UserPath -eq $downloaded
     $isLocalDotnet = ($first -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or $first -is [System.Management.Automation.Language.StringConstantExpressionAst]) -and
         $first.Extent.Text -match 'dotnet(\.exe)?["'']?$' -and $first.Extent.Text -match '\$installDir|\.dotnet'
+    if (-not $isLocalDotnet -and -not $isInstaller -and $first -is [System.Management.Automation.Language.VariableExpressionAst]) {
+        # `$dotnet = Join-Path $installDir 'dotnet.exe'; & $dotnet ...`: a variable assigned a dotnet path under the local SDK counts too
+        $name = $first.VariablePath.UserPath
+        $isLocalDotnet = [bool]($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and $_.Right.Extent.Text -match 'dotnet' -and $_.Right.Extent.Text -match '\$installDir|\.dotnet' })
+    }
     if (-not ($isInstaller -or $isLocalDotnet)) { return $null }
     return (@($cmd.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join ' ')
 }
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
 $commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true))
+$allAssignments = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true))
 $required = @(
     @{ name = 'dotnet-install script'; pattern = '@installArgs|-InstallDir' },
     @{ name = 'workload config';       pattern = '^workload\s+config\b' },
