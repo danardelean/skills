@@ -7,6 +7,8 @@
 #      dotnet-install script, workload config, workload install, build-server shutdown
 #      ($ErrorActionPreference = 'Stop' does not make a native exit code terminating)
 #   4. the workload install call passes $Workloads, so the defaults reach the installer
+#   5. the native calls target the downloaded installer script and the local .dotnet SDK, not the system dotnet;
+#      a failed workload install still shuts the build servers down before the failure is acted on
 $ErrorActionPreference = 'Stop'
 $candidate = Get-ChildItem -Path . -File | Where-Object { $_.Name -like 'install*.ps1' } | Select-Object -First 1
 if (-not $candidate) { Write-Host 'FAIL  no install*.ps1 in the workspace'; exit 1 }
@@ -81,13 +83,23 @@ function Test-Guard($ifAst, $varName) {
     }
     return ($condOk -and $bodyOk)
 }
+# the variable that Invoke-WebRequest -OutFile wrote the installer to: only `& <that variable>` counts as running the downloaded script
+$downloaded = $null
+foreach ($iwr in @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] -and $args[0].GetCommandName() -match '^(Invoke-WebRequest|iwr|curl|wget)$' }, $true))) {
+    $els = @($iwr.CommandElements)
+    for ($i = 0; $i -lt $els.Count - 1; $i++) {
+        if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -match '^OutFile$|^o$') { $downloaded = Get-VariableName $els[$i + 1] }
+    }
+}
 function Get-NativeArguments($cmd) {
-    # only a real invocation counts: `& <script variable> ...` or `& <...dotnet(.exe)> ...`; `Write-Host 'workload config'` returns $null
+    # only a real invocation counts: `& <downloaded installer variable> ...` or `& <local .dotnet ... dotnet(.exe)> ...`;
+    # `Write-Host 'workload config'`, `& 'dotnet' ...` (the system SDK) and `& $other @installArgs` return $null
     if ($cmd.InvocationOperator -ne [System.Management.Automation.Language.TokenKind]::Ampersand) { return $null }
     $first = $cmd.CommandElements[0]
-    $isScriptVar = $first -is [System.Management.Automation.Language.VariableExpressionAst]
-    $isDotnet = ($first -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or $first -is [System.Management.Automation.Language.StringConstantExpressionAst]) -and $first.Extent.Text -match 'dotnet(\.exe)?["'']?$'
-    if (-not ($isScriptVar -or $isDotnet)) { return $null }
+    $isInstaller = $first -is [System.Management.Automation.Language.VariableExpressionAst] -and $downloaded -and $first.VariablePath.UserPath -eq $downloaded
+    $isLocalDotnet = ($first -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or $first -is [System.Management.Automation.Language.StringConstantExpressionAst]) -and
+        $first.Extent.Text -match 'dotnet(\.exe)?["'']?$' -and $first.Extent.Text -match '\$installDir|\.dotnet'
+    if (-not ($isInstaller -or $isLocalDotnet)) { return $null }
     return (@($cmd.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join ' ')
 }
 $ifs = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.IfStatementAst] }, $true))
@@ -109,6 +121,10 @@ foreach ($r in $required) {
     $next = if ($nextStmt) { $nextStmt.Extent.Text } else { '' }
     $ok = $false
     if ($nextStmt -is [System.Management.Automation.Language.IfStatementAst]) {
+        if ($r.name -eq 'workload install') {
+            # an immediate throw after workload install would skip build-server shutdown: the code must be captured, the servers shut down, then the failure acted on
+            Write-Host "FAIL  workload install: an immediate guard skips build-server shutdown on failure; capture the exit code, shut down, then throw"; $failures++; continue
+        }
         $ok = Test-Guard $nextStmt 'LASTEXITCODE'
     } elseif ($next -match '^\s*\$(\w+)\s*=\s*\$LASTEXITCODE\s*$') {
         # the guard must come after the capture and inside the block that holds it
@@ -116,10 +132,16 @@ foreach ($r in $required) {
         $block = $nextStmt.Parent
         # any write to the captured variable between the capture and a guard voids that guard ($rc = $LASTEXITCODE; $rc = 0; if ($rc) ...)
         $writes = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) | Where-Object { (Get-VariableName $_.Left) -eq $var -and $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset })
-        $ok = [bool]($ifs | Where-Object {
+        $guardAst = $ifs | Where-Object {
             $guard = $_
             $guard.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $guard.Extent.EndOffset -le $block.Extent.EndOffset -and (Test-Guard $guard $var) -and
-            -not ($writes | Where-Object { $_.Extent.StartOffset -lt $guard.Extent.StartOffset }) })
+            -not ($writes | Where-Object { $_.Extent.StartOffset -lt $guard.Extent.StartOffset }) } | Select-Object -First 1
+        $ok = [bool]$guardAst
+        if ($ok -and $r.name -eq 'workload install') {
+            # build-server shutdown must run between the capture and the first guard, so a failed install still releases the nodes
+            $shutdown = $commands | Where-Object { $a = Get-NativeArguments $_; $null -ne $a -and $a -match '^build-server\s+shutdown\b' -and $_.Extent.StartOffset -gt $nextStmt.Extent.EndOffset -and $_.Extent.EndOffset -lt $guardAst.Extent.StartOffset } | Select-Object -First 1
+            if (-not $shutdown) { Write-Host "FAIL  workload install: no build-server shutdown between the exit-code capture and the guard"; $failures++; continue }
+        }
     }
     if ($ok) { Write-Host "ok    $($r.name): failure stops the script" } else { Write-Host "FAIL  $($r.name): no guard that tests a non-zero exit code and throws or exits non-zero right after it ($next)"; $failures++ }
 }

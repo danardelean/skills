@@ -396,12 +396,12 @@ stimuli:
           value: build-server shutdown
       - type: run-command
         config:
-          command: echo "6083d5bd8ec5f5f78dea58d8dd381a680ee14419cf6b64a168f5117c9484a81b  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
+          command: echo "1ae5eca1d8761f6e8e7c14c23987946ab61eb407ebbd39375f288e1be609d330  .eval/validate-daily-scripts.sh" | sha256sum -c --quiet && bash .eval/validate-daily-scripts.sh
           expected_exit_code: 0
           timeout: 2m
       - type: run-command
         config:
-          command: echo "fc6a7bfde5cdf7a76522559fccc1e23f7a58e79ad567485d360c0fb2beb8ee78  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
+          command: echo "7b5be2895399b4c4832d19745eb6eb59d2a111c92c58eb82121e5c89adb04fef  .eval/validate-ps-defaults.ps1" | sha256sum -c --quiet && pwsh -NoProfile -ExecutionPolicy Bypass -File .eval/validate-ps-defaults.ps1
           expected_exit_code: 0
           timeout: 1m
       - type: file-contains
@@ -428,24 +428,9 @@ stimuli:
         config:
           path: install*.ps1
           value: .gitignore
-      - type: file-exists
-        config:
-          path: NuGet.config
       - type: file-not-exists
         config:
           path: .dotnet/dotnet
-      - type: file-contains
-        config:
-          path: NuGet.config
-          value: _packaging/dotnet12/
-      - type: file-contains
-        config:
-          path: NuGet.config
-          value: darc-pub-dotnet-android
-      - type: file-contains
-        config:
-          path: NuGet.config
-          value: darc-pub-dotnet-macios
       - type: output-matches
         config:
           pattern: '(dotnet12|pkgs\.dev\.azure\.com|darc-pub)'
@@ -559,7 +544,7 @@ stimuli:
           path: .dotnet/dotnet
       - type: run-command
         config:
-          command: printf '%s\n' 'b0ea6710e502d25618e0122c87e09daf57d4cfa5d731ae446e2bd7920f2211fc  install-dotnet.sh' '081ec4d2780b4febef68637f0f5ad39851d59e2362670bb2cb2c38e621ba9628  install-dotnet.ps1' '8085dfcedd5189369a333a0369b1deeb494eb9a3ad38339179cfa13fe49d64d1  global.json' 'a9b842eace120f22ff94adb9bc5da6b55191ecf7a1460c41d6ecd2696d4d5cbd  .gitignore' | sha256sum -c --quiet && [ "$(ls -A | grep -vxF -e .eval -e .git | sort | tr '\n' ' ')" = ".gitignore global.json install-dotnet.ps1 install-dotnet.sh " ]
+          command: printf '%s\n' '92a83f545e3c34fa33e9e3563b2383a1cbdabff0235b012e77a6e68ac75ff80d  install-dotnet.sh' 'efde04f6c6bd4b03587c67aef93dbb99fdcf270a628eb0f163c0d6fb80621153  install-dotnet.ps1' '8085dfcedd5189369a333a0369b1deeb494eb9a3ad38339179cfa13fe49d64d1  global.json' 'a9b842eace120f22ff94adb9bc5da6b55191ecf7a1460c41d6ecd2696d4d5cbd  .gitignore' | sha256sum -c --quiet && [ "$(ls -A | grep -vxF -e .eval -e .git | sort | tr '\n' ' ')" = ".gitignore global.json install-dotnet.ps1 install-dotnet.sh " ]
           expected_exit_code: 0
           timeout: 1m
       - type: output-not-matches

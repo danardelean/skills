@@ -53,7 +53,7 @@ if ($quality -eq 'daily') {
     # a daily's runtime and reference packs are not on nuget.org: every restore needs the feed, workloads or not; the messages must stand alone in the team's repo
     $major = "$sdkVersion".Split('.')[0]
     $sources = & "$installDir\dotnet.exe" nuget list source --format Short  # the effective configuration: E enabled, D disabled
-    if (-not ($sources | Select-String -Pattern "^E +https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json\s*$" -Quiet)) {
+    if (-not ($sources | Where-Object { "$_".Trim() -eq "E https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json" })) {
         throw "Daily SDK: no enabled dotnet$major feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun."
     }
 }

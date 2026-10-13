@@ -110,6 +110,7 @@ run() { # name, sdk version, expected exit (0 or nonzero), config (yes / no / no
     nofeed) printf '<configuration><packageSources><add key="nuget.org" value="%s" /></packageSources></configuration>' "$NUGET" > "$box/NuGet.config"; printf 'E %s\n' "$NUGET" > "$FAKE_SOURCES" ;;
     disabled) printf '<configuration><packageSources><add key="nuget.org" value="%s" /><add key="dotnet12" value="%s" /></packageSources><disabledPackageSources><add key="dotnet12" value="true" /></disabledPackageSources></configuration>' "$NUGET" "$D12" > "$box/NuGet.config"; printf 'E %s\nD %s\n' "$NUGET" "$D12" > "$FAKE_SOURCES" ;;
     commented) printf '<configuration><packageSources><!-- <add key="dotnet12" value="%s" /> --><add key="nuget.org" value="%s" /></packageSources></configuration>' "$D12" "$NUGET" > "$box/NuGet.config"; printf 'E %s\n' "$NUGET" > "$FAKE_SOURCES" ;;
+    lookalike) printf '<configuration><packageSources><add key="nuget.org" value="%s" /><add key="dotnet12" value="https://pkgs.dev.azureXcom/dnceng/public/_packaging/dotnet12/nuget/v3/index.json" /></packageSources></configuration>' "$NUGET" > "$box/NuGet.config"; printf 'E %s\nE https://pkgs.dev.azureXcom/dnceng/public/_packaging/dotnet12/nuget/v3/index.json\n' "$NUGET" > "$FAKE_SOURCES" ;;
     bogus) printf '<configuration><packageSources><add key="nuget.org" value="%s" /><add key="dotnet12" value="https://example.invalid/_packaging/dotnet12/not-a-feed" /></packageSources></configuration>' "$NUGET" > "$box/NuGet.config"; printf 'E %s\nE https://example.invalid/_packaging/dotnet12/not-a-feed\n' "$NUGET" > "$FAKE_SOURCES" ;;
     *) : > "$FAKE_SOURCES" ;;
   esac
@@ -139,7 +140,7 @@ run rc2-main-lane "$V11" 1 yes "ios     27.1.11007-xcode27.1-net11.0/11.0.100-rc
 run rc2-main-lane-second "$V11" 1 yes "ios     27.0.12212-net11-rc.2/11.0.100-rc.2   SDK 11.0.100-rc.2" "android 37.99.0-preview.1.4/11.0.100-rc.2   SDK 11.0.100-rc.2"
 run no-config "$V12" 1 no "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
 if [ -f "$root/no-config/calls.log" ] && grep -q '^workload install' "$root/no-config/calls.log"; then echo "FAIL  workload install ran without a NuGet config"; failures=$((failures+1)); else echo "ok    no workload install without a NuGet config"; fi
-for cfgcase in nofeed disabled commented bogus; do
+for cfgcase in nofeed disabled commented bogus lookalike; do
   run "config-$cfgcase" "$V12" 1 "$cfgcase" "ios     27.0.12277-net12-p1/12.0.100-alpha.1   SDK 12.0.100-alpha.1"
   if [ -f "$root/config-$cfgcase/calls.log" ] && grep -q '^workload install' "$root/config-$cfgcase/calls.log"; then echo "FAIL  workload install ran although the dotnet12 feed is $cfgcase"; failures=$((failures+1)); else echo "ok    no workload install when the dotnet12 feed is $cfgcase"; fi
 done
