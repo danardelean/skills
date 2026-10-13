@@ -82,15 +82,17 @@ function Test-Guard($ifAst, $varName) {
     $cond = (($ifAst.Clauses | ForEach-Object { $_.Item1.Extent.Text }) -join ' ').Trim()
     $v = [regex]::Escape('$' + $varName)
     $condOk = $cond -match ('^(' + $v + '|' + $v + '\s+-ne\s+0|0\s+-ne\s+' + $v + '|(-not|!)\s*\(?\s*' + $v + '\s+-eq\s+0\s*\)?)$')
-    # the body must contain a real throw statement, or an exit statement with a literal non-zero code or the tested variable,
-    # directly on the guard's path: a terminator nested under another condition, loop, try, script block or function does not count
+    # the first terminator on the guard's direct path, in source order, decides: a throw, or an exit with a literal non-zero code or the
+    # tested variable, passes; a bare exit, exit 0, or a return before any throw fails (`exit 0; throw` exits 0). Terminators nested under
+    # another condition, loop, try, script block or function do not count
     $bodyOk = $false
     foreach ($blk in ($ifAst.Clauses | ForEach-Object { $_.Item2 })) {
-        $direct = @($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ThrowStatementAst] -or $args[0] -is [System.Management.Automation.Language.ExitStatementAst] }, $true) | Where-Object { Test-DirectPath $_ $blk })
-        if (@($direct | Where-Object { $_ -is [System.Management.Automation.Language.ThrowStatementAst] }).Count -gt 0) { $bodyOk = $true }
-        foreach ($ex in @($direct | Where-Object { $_ -is [System.Management.Automation.Language.ExitStatementAst] })) {
-            if (-not $ex.Pipeline) { continue }  # a bare `exit` is exit 0
-            $expr = $ex.Pipeline.GetPureExpression()
+        $first = @($blk.FindAll({ $args[0] -is [System.Management.Automation.Language.ThrowStatementAst] -or $args[0] -is [System.Management.Automation.Language.ExitStatementAst] -or $args[0] -is [System.Management.Automation.Language.ReturnStatementAst] }, $true) |
+            Where-Object { Test-DirectPath $_ $blk } | Sort-Object { $_.Extent.StartOffset } | Select-Object -First 1)
+        if (-not $first) { continue }
+        if ($first -is [System.Management.Automation.Language.ThrowStatementAst]) { $bodyOk = $true; continue }
+        if ($first -is [System.Management.Automation.Language.ExitStatementAst] -and $first.Pipeline) {
+            $expr = $first.Pipeline.GetPureExpression()
             if ($expr -is [System.Management.Automation.Language.ConstantExpressionAst] -and $expr.Value -is [int] -and $expr.Value -ne 0) { $bodyOk = $true }
             elseif ($expr -is [System.Management.Automation.Language.VariableExpressionAst] -and $expr.VariablePath.UserPath -eq $varName) { $bodyOk = $true }
         }
