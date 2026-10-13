@@ -113,8 +113,12 @@ function Test-Reachable($node, $depth = 0) {
             if ($inElse) {
                 foreach ($c in $parent.Clauses) { if ((Get-ConstantTruth $c.Item1) -eq $true) { return $false } }
             } else {
+                # the clause that holds the node must not be constant-false, and no earlier clause may be constant-true
+                # (`if ($true) { } elseif ($x) { <node> }` never reaches the node)
                 foreach ($c in $parent.Clauses) {
-                    if ($c.Item2.Extent.StartOffset -le $child.Extent.StartOffset -and $child.Extent.EndOffset -le $c.Item2.Extent.EndOffset) { if ((Get-ConstantTruth $c.Item1) -eq $false) { return $false } }
+                    $holds = $c.Item2.Extent.StartOffset -le $child.Extent.StartOffset -and $child.Extent.EndOffset -le $c.Item2.Extent.EndOffset
+                    if ($holds) { if ((Get-ConstantTruth $c.Item1) -eq $false) { return $false }; break }
+                    if ((Get-ConstantTruth $c.Item1) -eq $true) { return $false }
                 }
             }
         } elseif ($parent -is [System.Management.Automation.Language.WhileStatementAst] -or $parent -is [System.Management.Automation.Language.DoWhileStatementAst]) {
