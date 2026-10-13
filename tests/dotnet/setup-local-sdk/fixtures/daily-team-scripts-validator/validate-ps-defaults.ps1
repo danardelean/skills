@@ -11,8 +11,8 @@
 #      a failed workload install still shuts the build servers down before the failure is acted on
 #   6. the calls and the guards sit on a reachable path: code under a constant-false condition or inside a function definition does not count
 #   7. the local dotnet is the project-local one: the path names .dotnet, or a variable assigned the constant '.dotnet'
-#   8. the installer arguments, resolved through the splatted array and the constant variables, are -Channel 12.0.1xx -Quality daily
-#      -InstallDir .dotnet, with no exact -Version pin
+#   8. the installer arguments, resolved as of the call through the splatted array (= resets, += appends) and the constant variables
+#      at that point, are -Channel 12.0.1xx -Quality daily -InstallDir .dotnet, with no exact -Version pin
 $ErrorActionPreference = 'Stop'
 $candidate = Get-ChildItem -Path . -File | Where-Object { $_.Name -like 'install*.ps1' } | Select-Object -First 1
 if (-not $candidate) { Write-Host 'FAIL  no install*.ps1 in the workspace'; exit 1 }
@@ -146,19 +146,16 @@ function Test-LocalPathText($text) {
     }
     return $false
 }
-function Resolve-Constant($name) {
-    # the single constant string a variable is assigned on reachable paths; $null when none, several, or not constant
-    $values = @()
-    foreach ($as in $allAssignments) {
-        if ((Get-VariableName $as.Left) -ne $name -or $as.Operator -ne [System.Management.Automation.Language.TokenKind]::Equals -or -not (Test-Reachable $as)) { continue }
-        $right = $as.Right; if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
-        try { $v = $right.SafeGetValue() } catch { return $null }
-        if ($v -is [string]) { $values += $v } else { return $null }
-    }
-    $distinct = @($values | Select-Object -Unique)
-    if ($distinct.Count -eq 1) { return $distinct[0] } else { return $null }
+function Resolve-Constant($name, $offset) {
+    # the constant string a variable holds at $offset: the last reachable `=` assignment that ends before it; $null when none or not constant
+    $last = $null
+    foreach ($as in ($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and $_.Operator -eq [System.Management.Automation.Language.TokenKind]::Equals -and $_.Extent.EndOffset -le $offset -and (Test-Reachable $_) } | Sort-Object { $_.Extent.StartOffset })) { $last = $as }
+    if (-not $last) { return $null }
+    $right = $last.Right; if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
+    try { $v = $right.SafeGetValue() } catch { return $null }
+    if ($v -is [string]) { return $v } else { return $null }
 }
-function Resolve-ArrayElements($expr) {
+function Resolve-ArrayElements($expr, $offset) {
     # flatten an array literal into tokens; constant strings stay, string variables resolve, anything else becomes '<?>'
     $items = @()
     if ($expr -is [System.Management.Automation.Language.ArrayExpressionAst]) { $items = @($expr.SubExpression.Statements | ForEach-Object { if ($_ -is [System.Management.Automation.Language.PipelineAst]) { $_.GetPureExpression() } else { $_ } }) }
@@ -166,27 +163,32 @@ function Resolve-ArrayElements($expr) {
     else { $items = @($expr) }
     $out = @()
     foreach ($it in $items) {
-        if ($it -is [System.Management.Automation.Language.ArrayLiteralAst]) { $out += Resolve-ArrayElements $it; continue }
+        if ($it -is [System.Management.Automation.Language.ArrayLiteralAst]) { $out += Resolve-ArrayElements $it $offset; continue }
         if ($it -is [System.Management.Automation.Language.StringConstantExpressionAst]) { $out += $it.Value; continue }
-        if ($it -is [System.Management.Automation.Language.VariableExpressionAst]) { $v = Resolve-Constant $it.VariablePath.UserPath; $out += $(if ($null -ne $v) { $v } else { '<?>' }); continue }
+        if ($it -is [System.Management.Automation.Language.VariableExpressionAst]) { $v = Resolve-Constant $it.VariablePath.UserPath $offset; $out += $(if ($null -ne $v) { $v } else { '<?>' }); continue }
         $out += '<?>'
     }
     return $out
 }
 function Resolve-CommandTokens($cmd) {
-    # the arguments a command receives: direct elements, and the reachable `=`/`+=` assignments of each splatted variable, in source order
+    # the arguments a command receives as of its position: direct elements, and for each splatted variable its reachable assignments that
+    # end before the call, in source order, with `=` resetting the array and `+=` appending; later assignments do not count
+    $offset = $cmd.Extent.StartOffset
     $out = @()
     foreach ($el in @($cmd.CommandElements | Select-Object -Skip 1)) {
-        if ($el -is [System.Management.Automation.Language.CommandParameterAst]) { $out += ('-' + $el.ParameterName); if ($el.Argument) { $out += Resolve-ArrayElements $el.Argument }; continue }
+        if ($el -is [System.Management.Automation.Language.CommandParameterAst]) { $out += ('-' + $el.ParameterName); if ($el.Argument) { $out += Resolve-ArrayElements $el.Argument $offset }; continue }
         if ($el -is [System.Management.Automation.Language.VariableExpressionAst] -and $el.Splatted) {
             $name = $el.VariablePath.UserPath
-            foreach ($as in ($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and (Test-Reachable $_) } | Sort-Object { $_.Extent.StartOffset })) {
+            $splat = @()
+            foreach ($as in ($allAssignments | Where-Object { (Get-VariableName $_.Left) -eq $name -and $_.Extent.EndOffset -le $offset -and (Test-Reachable $_) } | Sort-Object { $_.Extent.StartOffset })) {
                 $right = $as.Right; if ($right -is [System.Management.Automation.Language.CommandExpressionAst]) { $right = $right.Expression }
-                $out += Resolve-ArrayElements $right
+                if ($as.Operator -eq [System.Management.Automation.Language.TokenKind]::Equals) { $splat = @() }
+                $splat += Resolve-ArrayElements $right $as.Extent.StartOffset
             }
+            $out += $splat
             continue
         }
-        $out += Resolve-ArrayElements $el
+        $out += Resolve-ArrayElements $el $offset
     }
     return $out
 }
