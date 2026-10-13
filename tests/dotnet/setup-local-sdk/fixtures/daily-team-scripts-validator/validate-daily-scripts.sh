@@ -10,7 +10,7 @@
 #   7. the successful run leaves a valid global.json whose sdk.version is the SDK version and sdk.paths is [.dotnet, $host$], and .dotnet/ in .gitignore
 #   8. dotnet-install is called with --channel 12.0.1xx --quality daily --install-dir .dotnet
 #   9. the workspace NuGet config is valid XML that clears inherited sources and has active nuget.org, dotnet12,
-#      android and macios sources, each equal to one of the pinned feed URLs (not just a URL of the right shape)
+#      android and macios sources, all of the pinned feed URLs of each family (not just a URL of the right shape)
 #  10. a wrong-band or wrong-lane workload is caught in any position of the list, not only the first
 #  11. run without arguments, the script installs ios and android by default
 #  12. a NuGet config without an enabled dotnet feed (absent, commented out, disabled, or a look-alike URL on another host) stops the script before workload install
@@ -93,7 +93,7 @@ android = {dnceng % n for n in ("darc-pub-dotnet-android-b4100484", "darc-pub-do
 macios = {dnceng % "darc-pub-dotnet-macios-fd471cba"}
 need = {"nuget.org": {"https://api.nuget.org/v3/index.json"}, "dotnet12": {dnceng % "dotnet12"}, "android": android, "macios": macios}
 present = {v.strip() for v in active}
-missing = [name for name, urls in need.items() if not (urls & present)]
+missing = [name for name, urls in need.items() if not urls <= present]  # every pinned feed of the family, not just one
 if missing:
     print("no active source for: %s" % ", ".join(missing)); sys.exit(1)
 PY

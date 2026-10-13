@@ -174,7 +174,7 @@ $commands = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language
 $allAssignments = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true))
 $required = @(
     @{ name = 'dotnet-install script'; pattern = '@installArgs|-InstallDir' },
-    @{ name = 'workload config';       pattern = '^workload\s+config\b' },
+    @{ name = 'workload config';       pattern = '^workload\s+config\s+--update-mode\s+manifests\b' },
     @{ name = 'workload install';      pattern = '^workload\s+install\b' },
     @{ name = 'build-server shutdown'; pattern = '^build-server\s+shutdown\b' }
 )
