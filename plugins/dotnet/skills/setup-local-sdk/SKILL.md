@@ -310,7 +310,7 @@ write_global_json
 grep -qxF '.dotnet/' .gitignore 2>/dev/null || printf '\n.dotnet/\n' >> .gitignore
 if [ "$QUALITY" = "daily" ]; then
     # a daily's runtime and reference packs are not on nuget.org: every restore needs the feed, workloads or not; the messages must stand alone in the team's repo
-    "$INSTALL_DIR/dotnet" nuget list source --format Short 2>/dev/null | sed 's/[[:space:]]*$//' | grep -Fxq "E https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json" \
+    "$INSTALL_DIR/dotnet" nuget list source --format Short 2>/dev/null | awk -v u="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json" '$1 ~ /^E[MO]*$/ && $2 == u { f = 1 } END { exit !f }' \
         || { echo "Daily SDK: no enabled dotnet${SDK_VERSION%%.*} feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet${SDK_VERSION%%.*}/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun." >&2; exit 1; }
 fi
 if [ ${#WORKLOADS[@]} -gt 0 ]; then
@@ -321,15 +321,18 @@ if [ ${#WORKLOADS[@]} -gt 0 ]; then
     if [ "$QUALITY" = "daily" ]; then
         "$INSTALL_DIR/dotnet" build-server shutdown >/dev/null  # even after a failed install: nodes keep the manifests they loaded
         [ "$rc" -eq 0 ] || exit "$rc"
-        # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
-        # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
+        # install exits 0 after a fallback to an older band or another lane's build: check each requested id's band in workload list,
+        # and the lane of every manifest's highest version folder (maui pulls in android and ios, which have no rows of their own)
         BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
         LANE="$(echo "$BAND" | sed -nE 's/^.*-(rc|preview)\.([0-9]+)$/(\1\\.\2|-p\2)([^0-9]|$)/p')"  # rc.2 or -p2 in the version; none for alpha or rtm
         LIST="$("$INSTALL_DIR/dotnet" workload list)"
         for w in "${WORKLOADS[@]}"; do
-            ver="$(printf '%s\n' "$LIST" | awk -v w="$w" '$1 == w { print $2 }')"  # <manifest version>/<band>
-            case "$ver" in */"$BAND") [ -z "$LANE" ] || echo "${ver%%/*}" | grep -Eq "$LANE" ;; *) false ;; esac \
-                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: ${ver:-missing} is not a ${BAND} build of the SDK's lane: the installer took a bundled or other-lane manifest. Extract the data/ folder of the right <id>.Manifest-${BAND} package into $INSTALL_DIR/sdk-manifests/${BAND}/<id>/<version>/, delete the other version folders of that id and $INSTALL_DIR/metadata/workloads/*/${BAND}/InstallState/default.json, then rerun with workload install --skip-manifest-update." >&2; exit 1; }
+            printf '%s\n' "$LIST" | awk -v w="$w" -v b="/$BAND" '$1 == w && substr($2, length($2) - length(b) + 1) == b { f = 1 } END { exit !f }' \
+                || { printf '%s\n' "$LIST" >&2; echo "workload ${w}: not installed from the ${BAND} band; the installer fell back to the manifests bundled with the SDK. Check that NuGet.config lists the daily feeds and rerun." >&2; exit 1; }
+        done
+        for m in "$INSTALL_DIR/sdk-manifests/$BAND"/*/; do
+            [ -n "$LANE" ] && [ -d "$m" ] || continue; ver="$(ls "$m" | sort -V | tail -1)"; echo "$ver" | grep -Eq "$LANE" \
+                || { echo "manifest $(basename "$m") $ver is not a build of the ${BAND} lane: another lane published into the band. Extract the data/ folder of the right $(basename "$m") Manifest-${BAND} package into ${m}<version>/, delete the other version folders there and $INSTALL_DIR/metadata/workloads/*/${BAND}/InstallState/default.json, then rerun with workload install --skip-manifest-update." >&2; exit 1; }
         done
     fi
     [ "$rc" -eq 0 ] || exit "$rc"
@@ -398,8 +401,8 @@ if (-not (Test-Path .gitignore) -or -not (Select-String -Path .gitignore -Patter
 if ($quality -eq 'daily') {
     # a daily's runtime and reference packs are not on nuget.org: every restore needs the feed, workloads or not; the messages must stand alone in the team's repo
     $major = "$sdkVersion".Split('.')[0]
-    $sources = & "$installDir\dotnet.exe" nuget list source --format Short  # the effective configuration: E enabled, D disabled
-    if (-not ($sources | Where-Object { "$_".Trim() -eq "E https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json" })) {
+    $sources = & "$installDir\dotnet.exe" nuget list source --format Short  # the effective configuration: E[M][O] enabled (machine-wide, official), D disabled
+    if (-not ($sources | Where-Object { $f = "$_".Trim() -split '\s+', 2; $f[0] -match '^E[MO]*$' -and $f[1] -eq "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json" })) {
         throw "Daily SDK: no enabled dotnet$major feed in the effective NuGet configuration. Add https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet$major/nuget/v3/index.json to NuGet.config, plus the darc-pub-* feeds that dotnet/maui's NuGet.config lists for this band, then rerun."
     }
 }
@@ -412,16 +415,17 @@ if ($Workloads.Count -gt 0) {
     if ($quality -eq 'daily') {
         & "$installDir\dotnet.exe" build-server shutdown | Out-Null; if ($LASTEXITCODE -ne 0) { throw "build-server shutdown failed with exit code $LASTEXITCODE" }  # even after a failed install
         if ($rc -ne 0) { throw "workload install failed with exit code $rc" }
-        # the install also succeeds after falling back to bundled manifests of an older band, or to a build of
-        # another lane publishing into the band (a main build in an rc band): check band and lane of every manifest
+        # install exits 0 after a fallback to an older band or another lane's build: check each requested id's band in workload list,
+        # and the lane of every manifest's highest version folder (maui pulls in android and ios, which have no rows of their own)
         $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
         $lane = if ($band -match '-(rc|preview)\.(\d+)$') { "($($Matches[1])\.$($Matches[2])|-p$($Matches[2]))(\D|`$)" } else { '' }  # rc.2 or -p2 in the version; none for alpha or rtm
         $list = & "$installDir\dotnet.exe" workload list
         foreach ($w in $Workloads) {
-            $ver = $list | Where-Object { ($_ -split '\s+')[0] -eq $w } | ForEach-Object { ($_ -split '\s+')[1] } | Select-Object -First 1  # <manifest version>/<band>
-            if (-not ($ver -and $ver.EndsWith("/$band") -and (-not $lane -or $ver.Split('/')[0] -match $lane))) {
-                $list | Write-Host; throw "workload ${w}: $(if ($ver) { $ver } else { 'missing' }) is not a $band build of the SDK's lane: the installer took a bundled or other-lane manifest. Extract the data\ folder of the right <id>.Manifest-$band package into $installDir\sdk-manifests\$band\<id>\<version>\, delete the other version folders of that id and $installDir\metadata\workloads\*\$band\InstallState\default.json, then rerun with workload install --skip-manifest-update."
-            }
+            if (-not ($list | Where-Object { $f = "$_".Trim() -split '\s+'; $f[0] -eq $w -and $f[1] -like "*/$band" })) { $list | Write-Host; throw "workload ${w}: not installed from the $band band; the installer fell back to the manifests bundled with the SDK. Check that NuGet.config lists the daily feeds and rerun." }
+        }
+        foreach ($m in Get-ChildItem (Join-Path $installDir "sdk-manifests\$band") -Directory -ErrorAction SilentlyContinue) {
+            $ver = (Get-ChildItem $m.FullName -Directory | Sort-Object { [version](($_.Name -split '-')[0]) }, Name | Select-Object -Last 1).Name
+            if ($lane -and $ver -notmatch $lane) { throw "manifest $($m.Name) $ver is not a build of the $band lane: another lane published into the band. Extract the data\ folder of the right $($m.Name) Manifest-$band package into $($m.FullName)\<version>\, delete the other version folders there and $installDir\metadata\workloads\*\$band\InstallState\default.json, then rerun with workload install --skip-manifest-update." }
         }
     }
     if ($rc -ne 0) { throw "workload install failed with exit code $rc" }
