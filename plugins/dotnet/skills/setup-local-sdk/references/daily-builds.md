@@ -109,7 +109,8 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
    only the workloads you asked for: `maui` brings in the Android, iOS and Mac Catalyst manifests
    without a row of their own. So check the lane on disk too: in `.dotnet/sdk-manifests/<band>/`,
    the highest version folder of every manifest id (the one the resolver takes) must carry the
-   band's label (`37.2.0-rc.2.84`, `27.0.12212-net11-rc.2`, `11.0.100-rc.2.26508.107`). Several lanes
+   band's label (`37.2.0-rc.2.84`, `27.0.12212-net11-rc.2`, `11.0.100-rc.2.26508.107`; the Apple
+   manifests of a preview band shorten it to `-p2`, an RC band's never do). Several lanes
    publish into one band and the installer takes the highest version: on that RC 2 daily,
    `workload update` picked Android `37.99.0-preview.1.4` (a `main` build) over the band's
    `37.2.0-rc.2.x`, and an iOS `27.1.…-xcode27.1-net11.0` build over `27.0.12212-net11-rc.2`,

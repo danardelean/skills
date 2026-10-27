@@ -324,7 +324,7 @@ if [ ${#WORKLOADS[@]} -gt 0 ]; then
         # install exits 0 after a fallback to an older band or another lane's build: check each requested id's band in workload list,
         # and the lane of every manifest's highest version folder (maui pulls in android and ios, which have no rows of their own)
         BAND="$(echo "$SDK_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9])[0-9][0-9](-(preview|rc|alpha)\.[0-9]+)?.*$/\100\2/')"
-        LANE="$(echo "$BAND" | sed -nE 's/^.*-(rc|preview)\.([0-9]+)$/(\1\\.\2|-p\2)([^0-9]|$)/p')"  # rc.2 or -p2 in the version; none for alpha or rtm
+        LANE="$(echo "$BAND" | sed -nE 's/^.*-rc\.([0-9]+)$/rc\\.\1([^0-9]|$)/p; s/^.*-preview\.([0-9]+)$/(preview\\.\1|-p\1)([^0-9]|$)/p')"  # rc.2; preview.2 or -p2; none for alpha or rtm
         LIST="$("$INSTALL_DIR/dotnet" workload list)"
         for w in "${WORKLOADS[@]}"; do
             printf '%s\n' "$LIST" | awk -v w="$w" -v b="/$BAND" '$1 == w && substr($2, length($2) - length(b) + 1) == b { f = 1 } END { exit !f }' \
@@ -418,7 +418,7 @@ if ($Workloads.Count -gt 0) {
         # install exits 0 after a fallback to an older band or another lane's build: check each requested id's band in workload list,
         # and the lane of every manifest's highest version folder (maui pulls in android and ios, which have no rows of their own)
         $band = "$sdkVersion" -replace '^(\d+\.\d+\.\d)\d\d(-(preview|rc|alpha)\.\d+)?.*$', '${1}00$2'
-        $lane = if ($band -match '-(rc|preview)\.(\d+)$') { "($($Matches[1])\.$($Matches[2])|-p$($Matches[2]))(\D|`$)" } else { '' }  # rc.2 or -p2 in the version; none for alpha or rtm
+        $lane = if ($band -match '-rc\.(\d+)$') { "rc\.$($Matches[1])(\D|`$)" } elseif ($band -match '-preview\.(\d+)$') { "(preview\.$($Matches[1])|-p$($Matches[1]))(\D|`$)" } else { '' }  # rc.2; preview.2 or -p2; none for alpha or rtm
         $list = & "$installDir\dotnet.exe" workload list
         foreach ($w in $Workloads) {
             if (-not ($list | Where-Object { $f = "$_".Trim() -split '\s+'; $f[0] -eq $w -and $f[1] -like "*/$band" })) { $list | Write-Host; throw "workload ${w}: not installed from the $band band; the installer fell back to the manifests bundled with the SDK. Check that NuGet.config lists the daily feeds and rerun." }
