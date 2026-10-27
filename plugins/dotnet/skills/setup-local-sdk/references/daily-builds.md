@@ -104,11 +104,16 @@ branch, `alpha.1` the next major. The SDK's *band* is the version without the bu
    Tell the user this is a local edit of a throwaway SDK. Verified on an `11.0.1xx-rc2` daily in
    October 2026: after the edit, `maui 11.0.0-rc.2.26505.5/11.0.100-rc.2` installed.
 
-4. **Check the lane, not only the exit code.** `./.dotnet/dotnet workload list` must show manifest
-   versions of the SDK's band, carrying its label (`maui 11.0.0-rc.2.…/11.0.100-rc.2`). Several lanes
+4. **Check the band and the lane, not only the exit code.** `./.dotnet/dotnet workload list` must
+   show each requested workload from the SDK's band (`maui 11.0.0-rc.2.…/11.0.100-rc.2`), but it lists
+   only the workloads you asked for: `maui` brings in the Android, iOS and Mac Catalyst manifests
+   without a row of their own. So check the lane on disk too: in `.dotnet/sdk-manifests/<band>/`,
+   the highest version folder of every manifest id (the one the resolver takes) must carry the
+   band's label (`37.2.0-rc.2.84`, `27.0.12212-net11-rc.2`, `11.0.100-rc.2.26508.107`). Several lanes
    publish into one band and the installer takes the highest version: on that RC 2 daily,
    `workload update` picked Android `37.99.0-preview.1.4` (a `main` build) over the band's
-   `37.2.0-rc.2.x`, and an iOS `27.1.…-xcode27.1-net11.0` build over `27.0.12212-net11-rc.2`.
+   `37.2.0-rc.2.x`, and an iOS `27.1.…-xcode27.1-net11.0` build over `27.0.12212-net11-rc.2`,
+   while `workload list` showed only a correct `maui` row.
    If the wrong lane won, place the manifest by hand: download the `<id>.Manifest-<band>` package of
    the right build and extract its `data/` folder into `.dotnet/sdk-manifests/<band>/<id>/<version>/`.
    Then delete the other version folders of that id, the wrong-lane one included: the resolver takes
